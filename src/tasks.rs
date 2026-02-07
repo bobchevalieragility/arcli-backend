@@ -22,7 +22,7 @@ use crate::aws::influx::InfluxInstance;
 use crate::aws::rds::RdsInstance;
 use crate::config::CliConfig;
 use crate::errors::ArcError;
-use crate::goals::GoalParams;
+use crate::goals::{GlobalParams, GoalParams};
 use crate::organization::Organization;
 use crate::tasks::port_forward::PortForwardInfo;
 use crate::tasks::select_actuator_service::ActuatorService;
@@ -32,7 +32,13 @@ use crate::tasks::select_kube_context::KubeContextInfo;
 #[async_trait]
 pub trait Task: Send + Sync {
     fn print_intro(&self) -> Result<(), ArcError>;
-    async fn execute(&self, params: &GoalParams, config: &CliConfig, state: &State) -> Result<GoalStatus, ArcError>;
+    async fn execute(
+        &self,
+        params: &GoalParams,
+        config: &CliConfig,
+        global_params: &GlobalParams,
+        state: &State
+    ) -> Result<GoalStatus, ArcError>;
 }
 
 #[derive(Debug)]
