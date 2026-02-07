@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.2.5](https://github.com/bobchevalieragility/arc-cli/compare/v0.2.4...v0.2.5)
+
+### ⛰️ Features
+
+
+- Make --aws-profile and --kube-context global params - ([c9e857b](https://github.com/bobchevalieragility/arc-cli/commit/c9e857b63398cb8e62282b4c0aa41f32b4b6d7f2))
+
+
 ## [0.2.4](https://github.com/bobchevalieragility/arc-cli/compare/v0.2.3...v0.2.4)
 
 ### ⛰️ Features
