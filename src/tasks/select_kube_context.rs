@@ -8,7 +8,7 @@ use crate::errors::ArcError;
 use crate::{GoalStatus, OutroText};
 use crate::args::PROMPT;
 use crate::config::CliConfig;
-use crate::goals::{GoalParams, GoalType};
+use crate::goals::{GlobalParams, GoalParams, GoalType};
 use crate::state::State;
 use crate::tasks::{Task, TaskResult};
 
@@ -22,7 +22,13 @@ impl Task for SelectKubeContextTask {
         Ok(())
     }
 
-    async fn execute(&self, params: &GoalParams, _config: &CliConfig, _state: &State) -> Result<GoalStatus, ArcError> {
+    async fn execute(
+        &self,
+        params: &GoalParams,
+        _config: &CliConfig,
+        _global_params: &GlobalParams,
+        _state: &State
+    ) -> Result<GoalStatus, ArcError> {
         if let GoalParams::KubeContextSelected{ use_current: true, .. } = params {
             if let Ok(current_kubeconfig) = env::var("KUBECONFIG") {
                 let kube_path = PathBuf::from(current_kubeconfig);

@@ -16,7 +16,7 @@ use console::style;
 use crate::errors::ArcError;
 use std;
 use crate::config::CliConfig;
-use crate::goals::Goal;
+use crate::goals::{GlobalParams, Goal};
 use crate::state::State;
 use crate::tasks::TaskResult;
 
@@ -30,15 +30,22 @@ pub async fn run(args: CliArgs) -> Result<(), ArcError> {
         CliConfig::default()
     };
 
+    // Extract top-level global parameters from the CLI args
+    let global_params = args.global_params();
+
     // A single ArcCommand may map to multiple goals
     // (e.g., Switch may require both AWS profile and Kube context selection)
-    let terminal_goals = args.command.to_goals();
+    let terminal_goals = args.to_goals();
 
     // Execute each goal, including any dependent goals
-    execute_goals(terminal_goals, config).await
+    execute_goals(terminal_goals, config, global_params).await
 }
 
-async fn execute_goals(terminal_goals: Vec<Goal>, config: CliConfig) -> Result<(), ArcError> {
+async fn execute_goals(
+    terminal_goals: Vec<Goal>,
+    config: CliConfig,
+    global_params: GlobalParams,
+) -> Result<(), ArcError> {
     let mut goals = terminal_goals.clone();
     let mut eval_string = String::new();
     let mut state = State::new();
@@ -65,7 +72,12 @@ async fn execute_goals(terminal_goals: Vec<Goal>, config: CliConfig) -> Result<(
         }
 
         // Attempt to complete the next goal on the stack
-        let goal_result = task.execute(params, &config, &state).await;
+        let goal_result = task.execute(
+            params,
+            &config,
+            &global_params,
+            &state,
+        ).await;
 
         // If next goal indicates that it needs the result of a dependent goal, then add the
         // dependent goal onto the stack, leaving the original goal to be executed at a later time.

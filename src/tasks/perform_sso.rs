@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::{aws, GoalStatus, OutroText};
 use crate::config::CliConfig;
 use crate::errors::ArcError;
-use crate::goals::GoalParams;
+use crate::goals::{GlobalParams, GoalParams};
 use crate::state::State;
 use crate::tasks::{Task, TaskResult};
 
@@ -21,7 +21,13 @@ impl Task for PerformSsoTask {
         Ok(())
     }
 
-    async fn execute(&self, _params: &GoalParams, _config: &CliConfig, _state: &State) -> Result<GoalStatus, ArcError> {
+    async fn execute(
+        &self,
+        _params: &GoalParams,
+        _config: &CliConfig,
+        _global_params: &GlobalParams,
+        _state: &State
+    ) -> Result<GoalStatus, ArcError> {
         // Infer the expected SSO cache file path from the AWS config
         let cache_path = get_sso_cache_path().await?;
 

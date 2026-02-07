@@ -3,7 +3,7 @@ use cliclack::{intro, select};
 use clap::ValueEnum;
 use serde_json::Value;
 use crate::errors::ArcError;
-use crate::goals::{Goal, GoalParams, GoalType};
+use crate::goals::{GlobalParams, Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
 use crate::config::CliConfig;
 use crate::state::State;
@@ -19,7 +19,13 @@ impl Task for SetLogLevelTask {
         Ok(())
     }
 
-    async fn execute(&self, params: &GoalParams, _config: &CliConfig, state: &State) -> Result<GoalStatus, ArcError> {
+    async fn execute(
+        &self,
+        params: &GoalParams,
+        _config: &CliConfig,
+        _global_params: &GlobalParams,
+        state: &State
+    ) -> Result<GoalStatus, ArcError> {
         // Ensure that SSO token has not expired
         let sso_goal = Goal::sso_token_valid();
         if !state.contains(&sso_goal) {

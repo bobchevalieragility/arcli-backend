@@ -40,8 +40,11 @@ impl Goal {
         Goal::new(GoalType::ActuatorServiceSelected, GoalParams::None)
     }
 
-    pub fn aws_profile_selected() -> Self {
-        let params = GoalParams::AwsProfileSelected { profile: PROMPT.to_string(), use_current: true };
+    pub fn aws_profile_selected(global_params: &GlobalParams) -> Self {
+        let params = match &global_params.aws_profile {
+            Some(p) => GoalParams::AwsProfileSelected { profile: p.clone(), use_current: false },
+            None => GoalParams::AwsProfileSelected { profile: PROMPT.to_string(), use_current: true },
+        };
         Goal::new(GoalType::AwsProfileSelected, params)
     }
 
@@ -78,8 +81,11 @@ impl Goal {
         Goal::new_terminal(GoalType::InfluxDumpCompleted, params)
     }
 
-    pub fn kube_context_selected() -> Self {
-        let params = GoalParams::KubeContextSelected { context: PROMPT.to_string(), use_current: true };
+    pub fn kube_context_selected(global_params: &GlobalParams) -> Self {
+        let params = match &global_params.kube_context {
+            Some(c) => GoalParams::KubeContextSelected { context: c.clone(), use_current: false },
+            None => GoalParams::KubeContextSelected { context: PROMPT.to_string(), use_current: true },
+        };
         Goal::new(GoalType::KubeContextSelected, params)
     }
 
@@ -204,6 +210,11 @@ impl From<GoalType> for String {
     fn from(goal_type: GoalType) -> Self {
         format!("{:?}", goal_type)
     }
+}
+
+pub struct GlobalParams {
+    pub aws_profile: Option<String>,
+    pub kube_context: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

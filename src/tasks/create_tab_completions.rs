@@ -6,7 +6,7 @@ use crate::args::CliArgs;
 use crate::{config_dir, GoalStatus, OutroText};
 use crate::config::CliConfig;
 use crate::errors::ArcError;
-use crate::goals::GoalParams;
+use crate::goals::{GlobalParams, GoalParams};
 use crate::state::State;
 use crate::tasks::{Task, TaskResult};
 
@@ -20,7 +20,13 @@ impl Task for CreateTabCompletionsTask {
         Ok(())
     }
 
-    async fn execute(&self, _params: &GoalParams, _config: &CliConfig, _state: &State) -> Result<GoalStatus, ArcError> {
+    async fn execute(
+        &self,
+        _params: &GoalParams,
+        _config: &CliConfig,
+        _global_params: &GlobalParams,
+        _state: &State
+    ) -> Result<GoalStatus, ArcError> {
         // Get a list of all available RDS instances for this account
         // let available_rds_instances = profile_info.account.rds_instances();
         let shell = prompt_for_shell()?;

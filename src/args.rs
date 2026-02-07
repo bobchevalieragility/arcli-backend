@@ -4,7 +4,7 @@ use std::convert::From;
 use std::path::PathBuf;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use crate::tasks::set_log_level::Level;
-use crate::goals::Goal;
+use crate::goals::{GlobalParams, Goal};
 
 // This constant must be kept in sync with its usage in the #[arg] attributes below
 pub const PROMPT: &str = "PROMPT";
@@ -12,8 +12,81 @@ pub const PROMPT: &str = "PROMPT";
 #[derive(Parser, Clone, Debug, PartialEq, Eq, Hash)]
 #[command(author, version, about = "CLI Tool for Arc Backend")]
 pub struct CliArgs {
+    #[arg(
+        short = 'a',
+        long,
+        global = true,
+        help = "Use AWS profile",
+        num_args = 0..=1,
+        default_missing_value = "PROMPT",
+        require_equals = true
+    )]
+    pub aws_profile: Option<String>,
+
+    #[arg(
+        short = 'k',
+        long,
+        global = true,
+        help = "Use K8 context",
+        num_args = 0..=1,
+        default_missing_value = "PROMPT",
+        require_equals = true
+    )]
+    kube_context: Option<String>,
+
     #[command(subcommand)]
     pub(crate) command: CliCommand,
+}
+
+impl CliArgs {
+    pub(crate) fn global_params(&self) -> GlobalParams {
+        GlobalParams {
+            aws_profile: self.aws_profile.clone(),
+            kube_context: self.kube_context.clone(),
+        }
+    }
+
+    pub(crate) fn to_goals(self) -> Vec<Goal> {
+        match self.command {
+            CliCommand::AwsSecret { name } => vec![
+                Goal::terminal_aws_secret_known(name)
+            ],
+            CliCommand::Completions => vec![Goal::terminal_tab_completions()],
+            CliCommand::LogLevel { service, package, level, display_only } => vec![
+                Goal::terminal_log_level_set(service, package, level, display_only)
+            ],
+            CliCommand::Pgcli => vec![Goal::terminal_pgcli_running()],
+            CliCommand::PortForward { service, port, group } => vec![
+                Goal::terminal_port_forward_established(service, port, group)
+            ],
+            CliCommand::InfluxUi => vec![Goal::terminal_influx_launched()],
+            CliCommand::InfluxDump { day, start, end, output } => vec![
+                Goal::terminal_influx_dump_completed(day, start, end, output)
+            ],
+            CliCommand::Switch => {
+                // Use global parameters to determine which prompts are needed, if any
+                match (&self.aws_profile, &self.kube_context) {
+                    (None, None) => vec![
+                        Goal::terminal_kube_context_selected(PROMPT),
+                        Goal::terminal_aws_profile_selected(PROMPT)
+                    ],
+                    (Some(p), Some(k)) => vec![
+                        Goal::terminal_kube_context_selected(k.clone()),
+                        Goal::terminal_aws_profile_selected(p.clone())
+                    ],
+                    (Some(p), None) => vec![
+                        Goal::terminal_aws_profile_selected(p.clone())
+                    ],
+                    (None, Some(k)) => vec![
+                        Goal::terminal_kube_context_selected(k.clone())
+                    ],
+                }
+            },
+            CliCommand::Vault { path, field } => vec![
+                Goal::terminal_vault_secret_known(path, field)
+            ],
+        }
+    }
 }
 
 #[derive(Subcommand, Clone, Debug, PartialEq, Eq, Hash)]
@@ -75,54 +148,9 @@ pub enum CliCommand {
         group: Option<String>,
     },
     #[command(about = "Switch AWS profile and/or Kubernetes context")]
-    Switch {
-        #[arg(short, long, help = "Switch AWS profile, if blank you'll be prompted for a profile", num_args = 0..=1, default_missing_value = "PROMPT")]
-        aws_profile: Option<String>,
-
-        #[arg(short, long, help = "Switch K8 context, if blank you'll be prompted for a context", num_args = 0..=1, default_missing_value = "PROMPT")]
-        kube_context: Option<String>,
-    },
+    Switch,
     #[command(about = "Generate a shell completion script")]
     Completions,
-}
-
-impl CliCommand {
-    pub(crate) fn to_goals(self) -> Vec<Goal> {
-        match self {
-            CliCommand::AwsSecret { name } => vec![
-                Goal::terminal_aws_secret_known(name)
-            ],
-            CliCommand::Completions => vec![Goal::terminal_tab_completions()],
-            CliCommand::LogLevel { service, package, level, display_only } => vec![
-                Goal::terminal_log_level_set(service, package, level, display_only)
-            ],
-            CliCommand::Pgcli => vec![Goal::terminal_pgcli_running()],
-            CliCommand::PortForward { service, port, group } => vec![
-                Goal::terminal_port_forward_established(service, port, group)
-            ],
-            CliCommand::InfluxUi => vec![Goal::terminal_influx_launched()],
-            CliCommand::InfluxDump { day, start, end, output } => vec![
-                Goal::terminal_influx_dump_completed(day, start, end, output)
-            ],
-            CliCommand::Switch { aws_profile: Some(p), kube_context: Some(k) } => vec![
-                Goal::terminal_kube_context_selected(k),
-                Goal::terminal_aws_profile_selected(p),
-            ],
-            CliCommand::Switch { aws_profile: None, kube_context: None } => vec![
-                Goal::terminal_kube_context_selected(PROMPT),
-                Goal::terminal_aws_profile_selected(PROMPT),
-            ],
-            CliCommand::Switch { aws_profile: Some(p), kube_context: None } => vec![
-                Goal::terminal_aws_profile_selected(p),
-            ],
-            CliCommand::Switch { aws_profile: None, kube_context: Some(k) } => vec![
-                Goal::terminal_kube_context_selected(k),
-            ],
-            CliCommand::Vault { path, field } => vec![
-                Goal::terminal_vault_secret_known(path, field)
-            ],
-        }
-    }
 }
 
 fn parse_datetime(input: &str) -> Result<DateTime<Utc>, String> {
