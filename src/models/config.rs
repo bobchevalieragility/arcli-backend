@@ -30,5 +30,6 @@ pub struct ServiceGroup {
 #[derive(Debug, Deserialize)]
 pub struct Service {
     pub(crate) name: String,
+    pub(crate) namespace: String,
     pub(crate) local_port: u16,
 }

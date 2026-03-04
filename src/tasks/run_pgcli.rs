@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use cliclack::intro;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, Goal, GoalParams};
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, Goal, GoalParams};
 use crate::{GoalStatus, OutroText};
-use crate::config::CliConfig;
-use crate::state::State;
+use crate::models::config::CliConfig;
+use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 #[derive(Debug)]
@@ -19,7 +19,7 @@ impl Task for RunPgcliTask {
 
     async fn execute(
         &self,
-        _params: &GoalParams,
+        params: &GoalParams,
         _config: &CliConfig,
         _global_params: &GlobalParams,
         state: &State
@@ -30,18 +30,24 @@ impl Task for RunPgcliTask {
             return Ok(GoalStatus::Needs(sso_goal));
         }
 
+        // Extract aws_profile arg from params
+        let aws_profile = match params {
+            GoalParams::PgcliRunning { aws_profile } => aws_profile.clone(),
+            _ => None,
+        };
+
         // If an RDS instance has not yet been selected, we need to wait for that goal to complete
-        let rds_selection_goal = Goal::rds_instance_selected();
+        let rds_selection_goal = Goal::rds_instance_selected(aws_profile.clone());
         if !state.contains(&rds_selection_goal) {
             return Ok(GoalStatus::Needs(rds_selection_goal));
         }
 
         // Retrieve selected RDS instance from state
         let rds_instance = state.get_rds_instance(&rds_selection_goal)?;
+        let rds_secret_name = rds_instance.secret_id().to_string();
 
         // If the password for this RDS instance has not yet been retrieved, we need to wait for that goal to complete
-        let rds_secret_name = rds_instance.secret_id().to_string();
-        let secret_goal = Goal::aws_secret_known(rds_secret_name);
+        let secret_goal = Goal::aws_secret_known(rds_secret_name, aws_profile);
         if !state.contains(&secret_goal) {
             return Ok(GoalStatus::Needs(secret_goal));
         }

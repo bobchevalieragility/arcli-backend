@@ -1,18 +1,20 @@
 use std;
 use std::convert::From;
 use chrono::{DateTime, NaiveDate, Utc};
-use crate::args::PROMPT;
+use crate::models::args::PROMPT;
 use crate::tasks::Task;
 use crate::tasks::create_tab_completions::CreateTabCompletionsTask;
 use crate::tasks::get_aws_secret::GetAwsSecretTask;
 use crate::tasks::get_vault_secret::GetVaultSecretTask;
 use crate::tasks::launch_influx::LaunchInfluxTask;
-use crate::tasks::login_to_vault::LoginToVaultTask;
+use crate::tasks::get_argo_app_statuses::GetArgoAppStatusesTask;
+use crate::tasks::get_github_pr_files::GetGithubPrFilesTask;
 use crate::tasks::perform_sso::PerformSsoTask;
 use crate::tasks::port_forward::PortForwardTask;
 use crate::tasks::influx_dump::InfluxDumpTask;
 use crate::tasks::run_pgcli::RunPgcliTask;
 use crate::tasks::select_actuator_service::SelectActuatorServiceTask;
+use crate::tasks::select_argo_instance::SelectArgoInstanceTask;
 use crate::tasks::select_aws_profile::SelectAwsProfileTask;
 use crate::tasks::select_influx_instance::SelectInfluxInstanceTask;
 use crate::tasks::select_kube_context::SelectKubeContextTask;
@@ -40,8 +42,8 @@ impl Goal {
         Goal::new(GoalType::ActuatorServiceSelected, GoalParams::None)
     }
 
-    pub fn aws_profile_selected(global_params: &GlobalParams) -> Self {
-        let params = match &global_params.aws_profile {
+    pub fn aws_profile_selected(aws_profile: Option<String>) -> Self {
+        let params = match aws_profile {
             Some(p) => GoalParams::AwsProfileSelected { profile: p.clone(), use_current: false },
             None => GoalParams::AwsProfileSelected { profile: PROMPT.to_string(), use_current: true },
         };
@@ -53,36 +55,49 @@ impl Goal {
         Goal::new_terminal(GoalType::AwsProfileSelected, params)
     }
 
-    pub fn aws_secret_known(secret_name: String) -> Self {
-        let params = GoalParams::AwsSecretKnown { name: Some(secret_name) };
+    pub fn aws_secret_known(secret_name: String, aws_profile: Option<String>) -> Self {
+        let params = GoalParams::AwsSecretKnown { name: Some(secret_name), aws_profile };
         Goal::new(GoalType::AwsSecretKnown, params)
     }
 
-    pub fn terminal_aws_secret_known(name: Option<String>) -> Self {
-        let params = GoalParams::AwsSecretKnown { name };
+    pub fn terminal_aws_secret_known(name: Option<String>, aws_profile: Option<String>) -> Self {
+        let params = GoalParams::AwsSecretKnown { name, aws_profile };
         Goal::new_terminal(GoalType::AwsSecretKnown, params)
     }
 
-    pub fn influx_instance_selected() -> Self {
-        Goal::new(GoalType::InfluxInstanceSelected, GoalParams::None)
+    pub fn github_pr_files_known(
+        repo: String,
+        pull_request: Option<u32>,
+        lookback_duration: Option<std::time::Duration>,
+        aws_profile: Option<String>,
+    ) -> Self {
+        let params = GoalParams::GithubPrFilesKnown { repo, pull_request, lookback_duration, aws_profile };
+        Goal::new(GoalType::GithubPrFilesKnown, params)
     }
 
-    pub fn terminal_influx_launched() -> Self {
-        Goal::new_terminal(GoalType::InfluxLaunched, GoalParams::None)
+    pub fn influx_instance_selected(aws_profile: Option<String>) -> Self {
+        let params = GoalParams::InfluxInstanceSelected { aws_profile };
+        Goal::new(GoalType::InfluxInstanceSelected, params)
+    }
+
+    pub fn terminal_influx_launched(aws_profile: Option<String>) -> Self {
+        let params = GoalParams::InfluxLaunched { aws_profile };
+        Goal::new_terminal(GoalType::InfluxLaunched, params)
     }
 
     pub fn terminal_influx_dump_completed(
         day: Option<NaiveDate>,
         start: Option<DateTime<Utc>>,
         end: Option<DateTime<Utc>>,
-        output: std::path::PathBuf
+        output: std::path::PathBuf,
+        aws_profile: Option<String>,
     ) -> Self {
-        let params = GoalParams::InfluxDumpCompleted { day, start, end, output };
+        let params = GoalParams::InfluxDumpCompleted { day, start, end, output, aws_profile };
         Goal::new_terminal(GoalType::InfluxDumpCompleted, params)
     }
 
-    pub fn kube_context_selected(global_params: &GlobalParams) -> Self {
-        let params = match &global_params.kube_context {
+    pub fn kube_context_selected(kube_context: Option<String>) -> Self {
+        let params = match kube_context {
             Some(c) => GoalParams::KubeContextSelected { context: c.clone(), use_current: false },
             None => GoalParams::KubeContextSelected { context: PROMPT.to_string(), use_current: true },
         };
@@ -98,9 +113,10 @@ impl Goal {
         service: Option<String>,
         package: String,
         level: Option<Level>,
-        display_only: bool
+        display_only: bool,
+        kube_context: Option<String>,
     ) -> Self {
-        let params = GoalParams::LogLevelSet { service, package, level, display_only };
+        let params = GoalParams::LogLevelSet { service, package, level, display_only, kube_context };
         Goal::new_terminal(GoalType::LogLevelSet, params)
     }
 
@@ -108,27 +124,37 @@ impl Goal {
         Goal::new(GoalType::OrganizationSelected, GoalParams::None)
     }
 
-    pub fn terminal_pgcli_running() -> Self {
-        Goal::new_terminal(GoalType::PgcliRunning, GoalParams::None)
+    pub fn terminal_pgcli_running(aws_profile: Option<String>) -> Self {
+        let params = GoalParams::PgcliRunning { aws_profile };
+        Goal::new_terminal(GoalType::PgcliRunning, params)
     }
 
-    pub fn port_forward_established(service: String) -> Self {
+    pub fn port_forward_established(service: String, kube_context: Option<String>) -> Self {
         let params = GoalParams::PortForwardEstablished {
+            namespace: None,
             service: Some(service),
             port: None,
             group: None,
-            tear_down: true
+            tear_down: true,
+            kube_context,
         };
         Goal::new(GoalType::PortForwardEstablished, params)
     }
 
-    pub fn terminal_port_forward_established(service: Option<String>, port: Option<u16>, group: Option<String>) -> Self {
-        let params = GoalParams::PortForwardEstablished { service, port, group, tear_down: false };
+    pub fn terminal_port_forward_established(
+        namespace: Option<String>,
+        service: Option<String>,
+        port: Option<u16>,
+        group: Option<String>,
+        kube_context: Option<String>
+    ) -> Self {
+        let params = GoalParams::PortForwardEstablished { namespace, service, port, group, tear_down: false, kube_context };
         Goal::new_terminal(GoalType::PortForwardEstablished, params)
     }
 
-    pub fn rds_instance_selected() -> Self {
-        Goal::new(GoalType::RdsInstanceSelected, GoalParams::None)
+    pub fn rds_instance_selected(aws_profile: Option<String>) -> Self {
+        let params = GoalParams::RdsInstanceSelected { aws_profile };
+        Goal::new(GoalType::RdsInstanceSelected, params)
     }
 
     pub fn sso_token_valid() -> Self {
@@ -139,20 +165,26 @@ impl Goal {
         Goal::new_terminal(GoalType::TabCompletionsExist, GoalParams::None)
     }
 
-    pub fn vault_secret_known(secret_path: String, secret_field: String) -> Self {
+    pub fn argo_instance_selected() -> Self {
+        Goal::new(GoalType::ArgoInstanceSelected, GoalParams::None)
+    }
+
+    pub fn terminal_argo(snapshot: bool, pull_request: Option<u32>, aws_profile: Option<String>) -> Self {
+        let params = GoalParams::ArgoStatusesKnown { snapshot, pull_request, aws_profile };
+        Goal::new_terminal(GoalType::ArgoStatusKnown, params)
+    }
+
+    pub fn vault_secret_known(secret_path: String, field: Option<String>, aws_profile: Option<String>) -> Self {
         let params = GoalParams::VaultSecretKnown {
             path: Some(secret_path),
-            field: Some(secret_field)
+            field,
+            aws_profile,
         };
         Goal::new(GoalType::VaultSecretKnown, params)
     }
 
-    pub fn vault_token_valid() -> Self {
-        Goal::new(GoalType::VaultTokenValid, GoalParams::None)
-    }
-
-    pub fn terminal_vault_secret_known(path: Option<String>, field: Option<String>) -> Self {
-        let params = GoalParams::VaultSecretKnown { path, field };
+    pub fn terminal_vault_secret_known(path: Option<String>, field: Option<String>, aws_profile: Option<String>) -> Self {
+        let params = GoalParams::VaultSecretKnown { path, field, aws_profile };
         Goal::new_terminal(GoalType::VaultSecretKnown, params)
     }
 }
@@ -166,8 +198,11 @@ impl From<&Goal> for String {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GoalType {
     ActuatorServiceSelected,
+    ArgoInstanceSelected,
+    ArgoStatusKnown,
     AwsProfileSelected,
     AwsSecretKnown,
+    GithubPrFilesKnown,
     InfluxInstanceSelected,
     InfluxLaunched,
     InfluxDumpCompleted,
@@ -180,15 +215,17 @@ pub enum GoalType {
     SsoTokenValid,
     TabCompletionsExist,
     VaultSecretKnown,
-    VaultTokenValid,
 }
 
 impl GoalType {
     pub fn to_task(&self) -> Box<dyn Task> {
         match self {
             GoalType::ActuatorServiceSelected => Box::new(SelectActuatorServiceTask),
+            GoalType::ArgoInstanceSelected => Box::new(SelectArgoInstanceTask),
+            GoalType::ArgoStatusKnown => Box::new(GetArgoAppStatusesTask),
             GoalType::AwsProfileSelected => Box::new(SelectAwsProfileTask),
             GoalType::AwsSecretKnown => Box::new(GetAwsSecretTask),
+            GoalType::GithubPrFilesKnown => Box::new(GetGithubPrFilesTask),
             GoalType::InfluxInstanceSelected => Box::new(SelectInfluxInstanceTask),
             GoalType::InfluxLaunched => Box::new(LaunchInfluxTask),
             GoalType::InfluxDumpCompleted => Box::new(InfluxDumpTask),
@@ -201,7 +238,6 @@ impl GoalType {
             GoalType::SsoTokenValid => Box::new(PerformSsoTask),
             GoalType::TabCompletionsExist => Box::new(CreateTabCompletionsTask),
             GoalType::VaultSecretKnown => Box::new(GetVaultSecretTask),
-            GoalType::VaultTokenValid => Box::new(LoginToVaultTask),
         }
     }
 }
@@ -213,25 +249,44 @@ impl From<GoalType> for String {
 }
 
 pub struct GlobalParams {
-    pub aws_profile: Option<String>,
-    pub kube_context: Option<String>,
+    // pub aws_profile: Option<String>,
+    // pub kube_context: Option<String>,
     pub raw_output: bool,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum GoalParams {
+    ArgoStatusesKnown {
+        snapshot: bool,
+        pull_request: Option<u32>,
+        aws_profile: Option<String>,
+    },
     AwsProfileSelected {
         profile: String,
         use_current: bool,
     },
     AwsSecretKnown {
         name: Option<String>,
+        aws_profile: Option<String>,
+    },
+    GithubPrFilesKnown {
+        repo: String,
+        pull_request: Option<u32>,
+        lookback_duration: Option<std::time::Duration>,
+        aws_profile: Option<String>,
     },
     InfluxDumpCompleted {
         day: Option<NaiveDate>,
         start: Option<DateTime<Utc>>,
         end: Option<DateTime<Utc>>,
         output: std::path::PathBuf,
+        aws_profile: Option<String>,
+    },
+    InfluxInstanceSelected {
+        aws_profile: Option<String>,
+    },
+    InfluxLaunched {
+        aws_profile: Option<String>,
     },
     KubeContextSelected {
         context: String,
@@ -242,17 +297,27 @@ pub enum GoalParams {
         package: String,
         level: Option<Level>,
         display_only: bool,
+        kube_context: Option<String>,
     },
     None,
+    PgcliRunning {
+        aws_profile: Option<String>,
+    },
     PortForwardEstablished {
+        namespace: Option<String>,
         service: Option<String>,
         port: Option<u16>,
         group: Option<String>,
         tear_down: bool,
+        kube_context: Option<String>,
+    },
+    RdsInstanceSelected {
+        aws_profile: Option<String>,
     },
     VaultSecretKnown {
         path: Option<String>,
         field: Option<String>,
+        aws_profile: Option<String>,
     },
 }
 

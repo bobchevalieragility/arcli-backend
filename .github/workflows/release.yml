@@ -107,6 +107,11 @@ jobs:
             cargo build --release --target ${{ matrix.target }}
           fi
 
+      - name: Code sign binary (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          codesign -s - --force --identifier com.agilityrobotics.arc.backend target/${{ matrix.target }}/release/arc
+
       - name: Rename binary
         shell: bash
         run: |

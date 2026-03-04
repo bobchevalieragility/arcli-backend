@@ -3,11 +3,11 @@ use chrono::NaiveTime;
 use chrono::Utc;
 use cliclack::intro;
 use reqwest;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
-use crate::config::CliConfig;
-use crate::state::State;
+use crate::models::config::CliConfig;
+use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 const DROPPED_COLS: [&str; 2] = ["_start", "_stop"];
@@ -37,8 +37,14 @@ impl Task for InfluxDumpTask {
             return Ok(GoalStatus::Needs(sso_goal));
         }
 
+        // Extract parameters
+        let (day, start, end, output, aws_profile) = match params {
+            GoalParams::InfluxDumpCompleted { day, start, end, output, aws_profile } => (day, start, end, output, aws_profile.clone()),
+            _ => return Err(ArcError::invalid_goal_params(GoalType::InfluxDumpCompleted, params)),
+        };
+
         // If an Influx instance has not yet been selected, we need to wait for that goal to complete
-        let influx_selection_goal = Goal::influx_instance_selected();
+        let influx_selection_goal = Goal::influx_instance_selected(aws_profile.clone());
         if !state.contains(&influx_selection_goal) {
             return Ok(GoalStatus::Needs(influx_selection_goal));
         }
@@ -48,7 +54,7 @@ impl Task for InfluxDumpTask {
 
         // If the token for this Influx instance has not yet been retrieved, we need to wait for that goal to complete
         let (path, field) = influx_instance.cli_secret_info();
-        let secret_goal = Goal::vault_secret_known(path.to_string(), field.to_string());
+        let secret_goal = Goal::vault_secret_known(path.to_string(), Some(field.to_string()), aws_profile);
         if !state.contains(&secret_goal) {
             return Ok(GoalStatus::Needs(secret_goal));
         }
@@ -64,12 +70,6 @@ impl Task for InfluxDumpTask {
 
         // Retrieve organization from state
         let organization = state.get_organization(&org_selection_goal)?;
-
-        // Extract parameters
-        let (day, start, end, output) = match params {
-            GoalParams::InfluxDumpCompleted { day, start, end, output } => (day, start, end, output),
-            _ => return Err(ArcError::invalid_goal_params(GoalType::InfluxDumpCompleted, params)),
-        };
 
         // Infer the start and end of the time range
         let (range_begin, range_end) = if let Some(start_time) = start {

@@ -3,11 +3,11 @@ use aws_config::BehaviorVersion;
 use aws_sdk_secretsmanager::Client;
 use aws_types::region::Region;
 use cliclack::{intro, select};
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
-use crate::config::CliConfig;
-use crate::state::State;
+use crate::models::config::CliConfig;
+use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 #[derive(Debug)]
@@ -24,7 +24,7 @@ impl Task for GetAwsSecretTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        global_params: &GlobalParams,
+        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Ensure that SSO token has not expired
@@ -33,8 +33,14 @@ impl Task for GetAwsSecretTask {
             return Ok(GoalStatus::Needs(sso_goal));
         }
 
+        // Extract aws_profile arg from params
+        let aws_profile = match params {
+            GoalParams::AwsSecretKnown { aws_profile, .. } => aws_profile.clone(),
+            _ => None,
+        };
+
         // If AWS profile info is not available, we need to wait for that goal to complete
-        let profile_goal = Goal::aws_profile_selected(global_params);
+        let profile_goal = Goal::aws_profile_selected(aws_profile);
         if !state.contains(&profile_goal) {
             return Ok(GoalStatus::Needs(profile_goal));
         }
@@ -44,7 +50,7 @@ impl Task for GetAwsSecretTask {
 
         // Create AWS Secrets Manager client with the selected profile
         let aws_config = aws_config::defaults(BehaviorVersion::latest())
-            .region(Region::new("us-west-2"))
+            .region(Region::new(profile_info.region.clone()))
             .profile_name(&profile_info.name)
             .load()
             .await;
@@ -52,8 +58,8 @@ impl Task for GetAwsSecretTask {
 
         // Determine which secret to retrieve, prompting user if necessary
         let secret_name = match params {
-            GoalParams::AwsSecretKnown{ name: Some(x) } => x.clone(),
-            GoalParams::AwsSecretKnown{ name: None } => prompt_for_aws_secret(&client).await?,
+            GoalParams::AwsSecretKnown{ name: Some(x), .. } => x.clone(),
+            GoalParams::AwsSecretKnown{ name: None, .. } => prompt_for_aws_secret(&client).await?,
             _ => return Err(ArcError::invalid_goal_params(GoalType::AwsSecretKnown, params)),
         };
 

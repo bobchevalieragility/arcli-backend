@@ -1,23 +1,19 @@
-mod args;
-mod aws;
-mod config;
-mod errors;
-mod goals;
-mod organization;
-mod state;
+mod models;
+mod clients;
+mod keyrings;
 mod tasks;
 
 // Re-export Args for use in main.rs
-pub use args::CliArgs;
+pub use models::args::CliArgs;
 
 use std::collections::HashSet;
 use cliclack::{outro, outro_note};
 use console::style;
-use crate::errors::ArcError;
+use models::errors::ArcError;
 use std;
-use crate::config::CliConfig;
-use crate::goals::{GlobalParams, Goal};
-use crate::state::State;
+use models::config::CliConfig;
+use models::goals::{GlobalParams, Goal};
+use models::state::State;
 use crate::tasks::TaskResult;
 
 pub async fn run(args: CliArgs) -> Result<(), ArcError> {
@@ -124,7 +120,7 @@ async fn execute_goals(
     if !global_params.raw_output {
         // This is the final output that the parent shell should eval (unless called from a script)
         // All other program outputs are sent to stderr (i.e. clickack interactive menus, outros, etc).
-        println!("{eval_string}");
+        println!("__EVAL__{eval_string}");
     }
 
     Ok(())

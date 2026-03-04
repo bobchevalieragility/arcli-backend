@@ -1,5 +1,4 @@
-use vaultrs::client::{VaultClient, VaultClientSettingsBuilder};
-use crate::aws::aws_account::AwsAccount;
+use crate::models::aws_profile::AwsAccount;
 
 pub enum VaultInstance {
     NonProd,
@@ -7,6 +6,13 @@ pub enum VaultInstance {
 }
 
 impl VaultInstance {
+    pub fn name(&self) -> &str {
+        match self {
+            VaultInstance::NonProd => "non-prod",
+            VaultInstance::Prod => "prod",
+        }
+    }
+
     pub fn address(&self) -> &str {
         match self {
             VaultInstance::NonProd => "https://nonprod-public-vault-b4ed83ad.91d9045d.z1.hashicorp.cloud:8200",
@@ -46,19 +52,4 @@ impl VaultInstance {
             VaultInstance::Prod => Some("arc-backend-developer".to_string()),
         }
     }
-}
-
-pub fn create_client(
-    address: &str,
-    namespace: Option<String>,
-    token: Option<String>
-) -> VaultClient {
-    let settings = VaultClientSettingsBuilder::default()
-        .address(address)
-        .namespace(namespace)
-        .token(token.unwrap_or_default())
-        .build()
-        .expect("Unable to build VaultClient settings");
-
-    VaultClient::new(settings).expect("Vault Client creation failed")
 }

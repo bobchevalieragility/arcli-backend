@@ -1,15 +1,12 @@
 use async_trait::async_trait;
 use cliclack::{intro, select};
-use std::collections::HashMap;
-use vaultrs::client::VaultClient;
-use vaultrs::kv2;
 use crate::tasks::{Task, TaskResult};
-use crate::aws::vault;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::clients::vault_client::VaultClient;
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
-use crate::config::CliConfig;
-use crate::state::State;
+use crate::models::config::CliConfig;
+use crate::models::state::State;
 
 #[derive(Debug)]
 pub struct GetVaultSecretTask;
@@ -25,35 +22,26 @@ impl Task for GetVaultSecretTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        global_params: &GlobalParams,
+        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
+        // Extract aws_profile arg from params
+        let aws_profile = match params {
+            GoalParams::VaultSecretKnown { aws_profile, .. } => aws_profile.clone(),
+            _ => None,
+        };
+
         // If AWS profile info is not available, we need to wait for that goal to complete
-        let profile_goal = Goal::aws_profile_selected(global_params);
+        let profile_goal = Goal::aws_profile_selected(aws_profile);
         if !state.contains(&profile_goal) {
             return Ok(GoalStatus::Needs(profile_goal));
-        }
-
-        // If we haven't obtained a valid Vault token yet, we need to wait for that goal to complete
-        let login_goal = Goal::vault_token_valid();
-        if !state.contains(&login_goal) {
-            return Ok(GoalStatus::Needs(login_goal));
         }
 
         // Retrieve info about the desired AWS profile from state
         let profile_info = state.get_aws_profile_info(&profile_goal)?;
 
-        // Retrieve validated Vault token from state
-        let token = state.get_vault_token(&login_goal)?;
-
-        // Create Vault client using the token
-        let aws_account = &profile_info.account;
-        let vault_instance = aws_account.vault_instance();
-        let client = vault::create_client(
-            vault_instance.address(),
-            vault_instance.secrets_namespace(aws_account),
-            Some(token)
-        );
+        // Create client for interacting with Vault
+        let client = VaultClient::new(&profile_info.account);
 
         // Determine which secret to retrieve, prompting user if necessary
         let secret_path = match params {
@@ -62,36 +50,24 @@ impl Task for GetVaultSecretTask {
             _ => return Err(ArcError::invalid_goal_params(GoalType::VaultSecretKnown, params)),
         };
 
-        // Retrieve the secret key-value pairs from Vault
-        let secrets: HashMap<String, String> = kv2::read(&client, "kv-v2", &secret_path).await?;
-
-        // Optionally extract a specific field from the secret and format for display
+        // Retrieve secret from Vault
         let (secret_value, outro_text) = match params {
             GoalParams::VaultSecretKnown{ field: Some(f), .. } => {
-                // Extract specific field
-                //TODO abstract this logic into a function
-                let secret_field = match secrets.get(f) {
-                    Some(value) => value.to_string(),
-                    None => {
-                        panic!("Field '{}' not found in secret at path '{}'", f, secret_path);
-                    }
-                };
+                // Extract a specific secret field
+                let secret_field = client.guarded_read_secret_field(&secret_path, f).await?;
                 let outro_msg = OutroText::multi(f.clone(), secret_field.clone());
                 (secret_field, outro_msg)
             },
             GoalParams::VaultSecretKnown{ field: None, .. } => {
                 // Concatenate k: v pairs into a single, newline-delimited string
-                //TODO abstract this logic into a function
-                let full_secret = secrets.iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
-                    .collect::<Vec<String>>()
-                    .join("\n");
+                let all_fields = client.guarded_read_secret(&secret_path).await?;
                 let prompt = "Secret Value".to_string();
-                let outro_msg = OutroText::multi(prompt, full_secret.clone());
-                (full_secret, outro_msg)
+                let outro_msg = OutroText::multi(prompt, all_fields.clone());
+                (all_fields, outro_msg)
             },
             _ => return Err(ArcError::invalid_goal_params(GoalType::VaultSecretKnown, params)),
         };
+
 
         Ok(GoalStatus::Completed(TaskResult::VaultSecret(secret_value), outro_text))
     }
@@ -101,13 +77,8 @@ async fn prompt_for_secret_path(client: &VaultClient) -> Result<String, ArcError
     let mut current_path = String::new();
 
     while current_path.is_empty() || current_path.ends_with('/') {
-        let items = kv2::list(client, "kv-v2", &current_path).await?;
-
         // Collect all available sub-paths
-        let available_paths: Vec<String> = items
-            .iter()
-            .map(|i|  format!("{}{}", current_path, i))
-            .collect();
+        let available_paths = client.guarded_list_paths(&current_path).await?;
 
         // Prompt user to select a path
         let mut menu = select("Select a secret path");

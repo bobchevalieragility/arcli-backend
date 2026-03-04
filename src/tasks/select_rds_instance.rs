@@ -1,11 +1,11 @@
 use cliclack::{intro, select};
 use async_trait::async_trait;
-use crate::aws::rds::RdsInstance;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, Goal, GoalParams};
+use crate::models::rds::RdsInstance;
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, Goal, GoalParams};
 use crate::{GoalStatus, OutroText};
-use crate::config::CliConfig;
-use crate::state::State;
+use crate::models::config::CliConfig;
+use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 #[derive(Debug)]
@@ -20,13 +20,19 @@ impl Task for SelectRdsInstanceTask {
 
     async fn execute(
         &self,
-        _params: &GoalParams,
+        params: &GoalParams,
         _config: &CliConfig,
-        global_params: &GlobalParams,
+        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
+        // Extract aws_profile from params
+        let aws_profile = match params {
+            GoalParams::RdsInstanceSelected { aws_profile } => aws_profile.clone(),
+            _ => None,
+        };
+
         // If AWS profile info is not available, we need to wait for that goal to complete
-        let profile_goal = Goal::aws_profile_selected(global_params);
+        let profile_goal = Goal::aws_profile_selected(aws_profile);
         if !state.contains(&profile_goal) {
             return Ok(GoalStatus::Needs(profile_goal));
         }

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use async_trait::async_trait;
 use kube::{Api, Client};
 use kube::api::ListParams;
@@ -5,16 +6,17 @@ use cliclack::{intro, outro_note, select, spinner};
 use console::style;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use k8s_openapi::api::core::v1::{Pod, Service, ServiceSpec};
+use k8s_openapi::api::core::v1::{Namespace, Pod, Service, ServiceSpec};
 use kube::config::Kubeconfig;
 use tokio::task::AbortHandle;
-use crate::aws::kube_service::KubeService;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::kube_service::KubeService;
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
-use crate::args::PROMPT;
-use crate::config::CliConfig;
-use crate::state::State;
+use crate::models::args::PROMPT;
+use crate::models::config::CliConfig;
+use crate::models::kube_context::KubeCluster;
+use crate::models::state::State;
 use crate::tasks::{sleep_indicator, Task, TaskResult};
 
 #[derive(Debug)]
@@ -31,7 +33,7 @@ impl Task for PortForwardTask {
         &self,
         params: &GoalParams,
         config: &CliConfig,
-        global_params: &GlobalParams,
+        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Ensure that SSO token has not expired
@@ -40,17 +42,20 @@ impl Task for PortForwardTask {
             return Ok(GoalStatus::Needs(sso_goal));
         }
 
+        // Extract kube_context arg from params
+        let kube_context = match params {
+            GoalParams::PortForwardEstablished { kube_context, .. } => kube_context.clone(),
+            _ => None,
+        };
+
         // If Kube context has not been selected, we need to wait for that goal to complete
-        let context_goal = Goal::kube_context_selected(global_params);
+        let context_goal = Goal::kube_context_selected(kube_context);
         if !state.contains(&context_goal) {
             return Ok(GoalStatus::Needs(context_goal));
         }
 
         // Retrieve info about the desired Kube context from state
         let context_info = state.get_kube_context_info(&context_goal)?;
-
-        // Get the cluster that corresponds to the selected context
-        let cluster = &context_info.cluster;
 
         // Create a Kubernetes client using the KUBECONFIG path from state
         let spinner = spinner();
@@ -59,20 +64,24 @@ impl Task for PortForwardTask {
         let client = Client::try_from(kubeconfig)?;
         spinner.stop("Kubernetes client created");
 
-        let service_api: Api<Service> = Api::namespaced(client.clone(), &cluster.namespace());
-
         // Determine which service(s) and port(s) to forward to, prompting user if necessary
-        let targets: Vec<TargetService> = get_target_services(params, config, &service_api).await?;
+        let targets: Vec<TargetService> = get_target_services(params, config, &context_info.cluster, &client).await?;
 
-        // Find pods and start port forwarding for each target service
-        let pod_api: Api<Pod> = Api::namespaced(client.clone(), &cluster.namespace());
+        let mut service_apis: HashMap<String, Api<Service>> = HashMap::new();
+        let mut pod_apis: HashMap<String, Api<Pod>> = HashMap::new();
+
         let mut port_forward_infos = Vec::new();
-
         for target in &targets {
             let service_name = target.service.name.clone();
             let remote_port = target.service.port;
             let local_port = target.local_port;
 
+            let service_api = service_apis.entry(target.service.namespace.clone())
+                .or_insert_with(|| Api::namespaced(client.clone(), &target.service.namespace));
+            let pod_api = pod_apis.entry(target.service.namespace.clone())
+                .or_insert_with(|| Api::namespaced(client.clone(), &target.service.namespace));
+
+            // Find pods and start port forwarding for each target service
             let pod = get_service_pod(&service_name, &service_api, &pod_api).await?;
             let pod_api_clone = pod_api.clone();
             let handle = tokio::spawn(async move {
@@ -149,55 +158,76 @@ impl Drop for PortForwardInfo {
 async fn get_target_services(
     params: &GoalParams,
     config: &CliConfig,
-    service_api: &Api<Service>,
+    cluster: &KubeCluster,
+    client: &Client,
 ) -> Result<Vec<TargetService>, ArcError> {
+    if let GoalParams::PortForwardEstablished { group: Some(group_name), .. } = params {
+        // Port-forward to a group of services
+        let group_name_str = if group_name != PROMPT {
+            group_name.as_str()
+        } else {
+            &prompt_for_group_name(config)?
+        };
+
+        // Find the ServiceGroup whose name matches group_name
+        let service_group = config.port_forward.groups
+            .iter()
+            .find(|group| group.name == group_name_str)
+            .ok_or_else(|| ArcError::invalid_config_error(&format!("Port-forward group '{}' not found in config", group_name_str)))?;
+
+        // Convert the services to TargetService objects
+        let mut service_apis: HashMap<String, Api<Service>> = HashMap::new();
+        let mut targets = Vec::new();
+        for s in &service_group.services {
+            let namespace = s.namespace.clone();
+            let api = service_apis.entry(namespace)
+                .or_insert_with(|| Api::namespaced(client.clone(), &s.namespace));
+            let remote_port = get_remote_port(&api, &s.name).await?;
+            let svc = KubeService::new(s.namespace.clone(), s.name.clone(), remote_port);
+            targets.push(TargetService { service: svc, local_port: s.local_port });
+        }
+        return Ok(targets)
+    };
+
+    // Determine service's namespace
+    let namespace = match params {
+        GoalParams::PortForwardEstablished { namespace: Some(ns), .. } => ns.clone(),
+        _ => match cluster.namespace() {
+            // Infer namespace from cluster unless it's PROMPT
+            PROMPT => {
+                let namespace_api: Api<Namespace> = Api::all(client.clone());
+                prompt_for_namespace(&namespace_api).await?
+            },
+            _ => cluster.namespace().to_string(),
+        }
+    };
+
+    let service_api: Api<Service> = Api::namespaced(client.clone(), &namespace);
+
     match params {
         GoalParams::PortForwardEstablished { service: Some(s), port: Some(p), .. } => {
             // Single service and local port specified
             let remote_port = get_remote_port(&service_api, s).await?;
-            let svc = KubeService::new(s.clone(), remote_port);
+            let svc = KubeService::new(namespace, s.clone(), remote_port);
             Ok(vec![TargetService { service: svc, local_port: *p }])
         },
         GoalParams::PortForwardEstablished { service: Some(s), port: None, .. } => {
             // Single service specified
             let remote_port = get_remote_port(&service_api, s).await?;
-            let svc = KubeService::new(s.clone(), remote_port);
+            let svc = KubeService::new(namespace, s.clone(), remote_port);
             let local_port = find_available_port().await?;
             Ok(vec![TargetService { service: svc, local_port }])
         },
         GoalParams::PortForwardEstablished { service: None, port: Some(p), .. } => {
             // Single local port specified
-            let svc = prompt_for_service(service_api).await?;
+            let svc = prompt_for_service(&namespace, &service_api).await?;
             Ok(vec![TargetService { service: svc, local_port: *p }])
         },
         GoalParams::PortForwardEstablished { service: None, port: None, group: None, .. } => {
             // Single port forward desired, but neither service nor port specified
-            let svc = prompt_for_service(service_api).await?;
+            let svc = prompt_for_service(&namespace, &service_api).await?;
             let local_port = find_available_port().await?;
             Ok(vec![TargetService { service: svc, local_port }])
-        },
-        GoalParams::PortForwardEstablished { group: Some(group_name), .. } => {
-            // Port-forward to a group of services
-            let group_name_str = if group_name != PROMPT {
-                group_name.as_str()
-            } else {
-                &prompt_for_group_name(config)?
-            };
-
-            // Find the ServiceGroup whose name matches group_name
-            let service_group = config.port_forward.groups
-                .iter()
-                .find(|group| group.name == group_name_str)
-                .ok_or_else(|| ArcError::invalid_config_error(&format!("Port-forward group '{}' not found in config", group_name_str)))?;
-
-            // Convert the services to TargetService objects
-            let mut targets = Vec::new();
-            for s in &service_group.services {
-                let remote_port = get_remote_port(&service_api, &s.name).await?;
-                let svc = KubeService::new(s.name.clone(), remote_port);
-                targets.push(TargetService { service: svc, local_port: s.local_port });
-            }
-            Ok(targets)
         },
         _ => Err(ArcError::invalid_goal_params(GoalType::PortForwardEstablished, params)),
     }
@@ -227,7 +257,7 @@ fn prompt_for_group_name(config: &CliConfig) -> Result<String, ArcError> {
     Ok(group_name)
 }
 
-async fn get_app_services(service_api: &Api<Service>) -> Result<Vec<KubeService>, ArcError> {
+async fn get_app_services(namespace: &str, service_api: &Api<Service>) -> Result<Vec<KubeService>, ArcError> {
     // Retrieve ALL services for the given namespace
     let list_params = ListParams::default();
     let svc_list = service_api.list(&list_params).await?;
@@ -241,14 +271,38 @@ async fn get_app_services(service_api: &Api<Service>) -> Result<Vec<KubeService>
         }).map(|svc| {
             let name = svc.metadata.name.unwrap();
             let remote_port = extract_port(svc.spec)?;
-            Ok(KubeService::new(name, remote_port))
+            Ok(KubeService::new(namespace.to_string(), name, remote_port))
         }).collect::<Result<Vec<_>, ArcError>>()?;
 
     Ok(kube_services)
 }
 
-async fn prompt_for_service(service_api: &Api<Service>) -> Result<KubeService, ArcError> {
-    let available_services = get_app_services(&service_api).await?;
+async fn get_namespaces(namespace_api: &Api<Namespace>) -> Result<Vec<String>, ArcError> {
+    // Retrieve ALL namespaces
+    let list_params = ListParams::default();
+    let ns_list = namespace_api.list(&list_params).await?;
+    let namespaces: Vec<String> = ns_list.items
+        .into_iter()
+        .filter_map(|ns| ns.metadata.name)
+        .collect();
+
+    Ok(namespaces)
+}
+
+async fn prompt_for_namespace(namespace_api: &Api<Namespace>) -> Result<String, ArcError> {
+    let available_namespaces = get_namespaces(&namespace_api).await?;
+
+    let mut menu = select("Select the service's namespace");
+    for ns in &available_namespaces {
+        menu = menu.item(ns, ns, "");
+    }
+    let selected_namespace = menu.interact()?;
+
+    Ok(selected_namespace.clone())
+}
+
+async fn prompt_for_service(namespace: &str, service_api: &Api<Service>) -> Result<KubeService, ArcError> {
+    let available_services = get_app_services(namespace, &service_api).await?;
 
     let mut menu = select("Select a service for port-forwarding");
     for svc in &available_services {

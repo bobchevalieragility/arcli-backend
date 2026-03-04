@@ -2,11 +2,11 @@ use async_trait::async_trait;
 use cliclack::{intro, select};
 use clap::ValueEnum;
 use serde_json::Value;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
-use crate::config::CliConfig;
-use crate::state::State;
+use crate::models::config::CliConfig;
+use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 #[derive(Debug)]
@@ -33,8 +33,8 @@ impl Task for SetLogLevelTask {
         }
 
         // Extract the optional service name from params
-        let service_arg = match params {
-            GoalParams::LogLevelSet{ service, .. } => service,
+        let (service_arg, kube_context_arg) = match params {
+            GoalParams::LogLevelSet{ service, kube_context, .. } => (service, kube_context),
             _ => return Err(ArcError::invalid_goal_params(GoalType::LogLevelSet, params)),
         };
 
@@ -51,7 +51,7 @@ impl Task for SetLogLevelTask {
         };
 
         // If a port-forwarding session doesn't exist, we need to wait for that goal to complete
-        let port_fwd_goal = Goal::port_forward_established(service);
+        let port_fwd_goal = Goal::port_forward_established(service, kube_context_arg.clone());
         if !state.contains(&port_fwd_goal) {
             return Ok(GoalStatus::Needs(port_fwd_goal));
         }

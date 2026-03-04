@@ -1,8 +1,16 @@
+use std::time::SystemTimeError;
 use aws_runtime::env_config::error::EnvConfigFileLoadError;
 use aws_sdk_secretsmanager::config::http::HttpResponse;
 use aws_sdk_secretsmanager::error::SdkError;
 use aws_sdk_secretsmanager::operation::get_secret_value::GetSecretValueError;
 use aws_sdk_secretsmanager::operation::list_secrets::ListSecretsError;
+use aws_sdk_ssooidc::operation::register_client::RegisterClientError;
+use aws_sdk_ssooidc::operation::start_device_authorization::StartDeviceAuthorizationError;
+use aws_sdk_ssooidc::operation::create_token::CreateTokenError;
+use aws_sdk_ssooidc::config::http::HttpResponse as SsoHttpResponse;
+use aws_sdk_ssooidc::error::SdkError as SsoSdkError;
+use openidconnect::{HttpClientError, StandardErrorResponse};
+use openidconnect::core::CoreErrorResponseType;
 use thiserror::Error;
 use url::Url;
 
@@ -23,8 +31,17 @@ pub enum ArcError {
     #[error("AWS SSO: {0}")]
     AwsSsoError(String),
 
-    #[error("SSO session expired, please run 'aws sso login'")]
+    #[error("SSO session expired, please run 'models sso login'")]
     AwsSsoExpired,
+
+    #[error("SSO Register Error: {0}")]
+    SsoRegisterError(#[from] SsoSdkError<RegisterClientError, SsoHttpResponse>),
+
+    #[error("SSO Start Device Authorization Error: {0}")]
+    SsoStartDeviceAuthError(#[from] SsoSdkError<StartDeviceAuthorizationError, SsoHttpResponse>),
+
+    #[error("SSO Create Token Error: {0}")]
+    SsoCreateTokenError(#[from] SsoSdkError<CreateTokenError, SsoHttpResponse>),
 
     #[error("Chrono parse error: {0}")]
     ChronoParseError(#[from] chrono::ParseError),
@@ -34,6 +51,9 @@ pub enum ArcError {
 
     #[error("Could not determine home directory")]
     HomeDirError,
+
+    #[error("HTTP header error: {0}")]
+    HttpHeaderError(String),
 
     #[error("InfluxDB query error: {0}")]
     InfluxQueryError(String),
@@ -59,6 +79,9 @@ pub enum ArcError {
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
 
+    #[error("JWT error: {0}")]
+    JwtError(#[from] jsonwebtoken::errors::Error),
+
     #[error("Kubernetes Config error: {0}")]
     KubeconfigError(#[from] kube::config::KubeconfigError),
 
@@ -74,8 +97,23 @@ pub enum ArcError {
     #[error("Unable to lookup Kube Service spec: {0}")]
     KubeServiceSpecError(String),
 
+    #[error("Keyring error: {0}")]
+    KeyringError(#[from] keyring::Error),
+
+    #[error("OpenIDConnect config error: {0}")]
+    OpenIdConnectConfigError(#[from] openidconnect::ConfigurationError),
+
+    #[error("OpenIDConnect discovery error: {0}")]
+    OpenIdConnectDiscoveryError(#[from] openidconnect::DiscoveryError<HttpClientError<reqwest::Error>>),
+
+    #[error("OpenIDConnect token error: {0}")]
+    OpenIdConnectTokenError(#[from] openidconnect::RequestTokenError<HttpClientError<reqwest::Error>, StandardErrorResponse<CoreErrorResponseType>>),
+
     #[error("HTTP request error: {0}")]
     ReqwestError(#[from] reqwest::Error),
+
+    #[error("System time error: {0}")]
+    SystemTimeError(#[from] SystemTimeError),
 
     #[error("Tokio Join error: {0}")]
     TokioJoinError(#[from] tokio::task::JoinError),

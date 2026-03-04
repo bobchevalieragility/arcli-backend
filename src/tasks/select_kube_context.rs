@@ -3,13 +3,13 @@ use async_trait::async_trait;
 use std::{env, fs};
 use std::path::PathBuf;
 use kube::config::Kubeconfig;
-use crate::aws::eks_cluster::EksCluster;
-use crate::errors::ArcError;
+use crate::models::errors::ArcError;
 use crate::{GoalStatus, OutroText};
-use crate::args::PROMPT;
-use crate::config::CliConfig;
-use crate::goals::{GlobalParams, GoalParams, GoalType};
-use crate::state::State;
+use crate::models::args::PROMPT;
+use crate::models::config::CliConfig;
+use crate::models::goals::{GlobalParams, GoalParams, GoalType};
+use crate::models::kube_context::{KubeCluster, KubeContextInfo};
+use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 #[derive(Debug)]
@@ -33,16 +33,14 @@ impl Task for SelectKubeContextTask {
             if let Ok(current_kubeconfig) = env::var("KUBECONFIG") {
                 let kube_path = PathBuf::from(current_kubeconfig);
                 let config = Kubeconfig::read_from(&kube_path)?;
-                let current_context = config.current_context
-                    .as_ref()
-                    .ok_or_else(|| ArcError::kube_context_error("Current context not set"))?;
-
-                // Find the cluster associated with the current context
-                let eks_cluster = get_cluster(current_context, &config)?;
-                let info = KubeContextInfo::new(eks_cluster, kube_path);
+                let current_context = config.current_context.as_ref()
+                    .ok_or_else(|| ArcError::kube_context_error("Current context not set"))?
+                    .clone();
+                let cluster = extract_cluster(&current_context, &config)?;
+                let info = KubeContextInfo::new(current_context.clone(), cluster, kube_path);
                 let task_result = TaskResult::KubeContext{ context: info, updated: false };
                 let key = "Using current Kube Context".to_string();
-                let outro_text = OutroText::single(key, current_context.clone());
+                let outro_text = OutroText::single(key, current_context);
                 return Ok(GoalStatus::Completed(task_result, outro_text))
             }
         }
@@ -78,12 +76,11 @@ impl Task for SelectKubeContextTask {
             }
         };
 
+        let cluster = extract_cluster(&selected_kube_context, &config)?;
+
         // Set outro content
         let key = "Switched to Kube context".to_string();
         let outro_text = OutroText::single(key, selected_kube_context.clone());
-
-        // Find the cluster associated with the selected context
-        let eks_cluster = get_cluster(&selected_kube_context, &config)?;
 
         // Modify the current context in the in-memory config
         config.current_context = Some(selected_kube_context.clone());
@@ -101,41 +98,15 @@ impl Task for SelectKubeContextTask {
         unsafe { env::set_var("KUBECONFIG", &tmp_kube_path); }
 
         // Create task result
-        let info = KubeContextInfo::new(eks_cluster, tmp_kube_path);
+        let info = KubeContextInfo::new(selected_kube_context, cluster, tmp_kube_path);
         let task_result = TaskResult::KubeContext{ context: info, updated: true };
 
         Ok(GoalStatus::Completed(task_result, outro_text))
     }
 }
 
-#[derive(Debug)]
-pub struct KubeContextInfo {
-    pub cluster: EksCluster,
-    pub kubeconfig: PathBuf,
-}
-
-impl KubeContextInfo {
-    pub fn new(cluster: EksCluster, kubeconfig: PathBuf) -> KubeContextInfo {
-        KubeContextInfo { cluster, kubeconfig }
-    }
-}
-
 fn default_kube_path() -> Option<PathBuf> {
     Some(home::home_dir()?.join(".kube").join("config"))
-}
-
-fn get_cluster(context_name: &str, config: &Kubeconfig) -> Result<EksCluster, ArcError> {
-    let named_context = config.contexts.iter()
-        .find(|ctx| ctx.name == context_name)
-        .ok_or_else(|| ArcError::KubeContextError(
-            format!("Unable to find named context: {}", context_name)
-        ))?;
-
-    let context = named_context.context.as_ref().ok_or_else(|| ArcError::KubeContextError(
-        format!("Unable to find context info for: {}", context_name)
-    ))?;
-
-    Ok(EksCluster::from(context.cluster.as_str()))
 }
 
 fn prompt_for_kube_context(config: &Kubeconfig) -> Result<String, ArcError> {
@@ -151,4 +122,12 @@ fn prompt_for_kube_context(config: &Kubeconfig) -> Result<String, ArcError> {
     }
 
     Ok(menu.interact()?.to_string())
+}
+
+fn extract_cluster(context: &str, config: &Kubeconfig) -> Result<KubeCluster, ArcError> {
+    config.contexts.iter()
+        .find(|ctx| ctx.name == context)
+        .and_then(|named_ctx| named_ctx.context.as_ref())
+        .map(|context| KubeCluster::from(context.cluster.as_str()))
+        .ok_or_else(|| ArcError::kube_context_error(format!("Context '{}' not found", context)))
 }

@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 use serde_json::Value;
-use crate::aws::influx::InfluxInstance;
-use crate::aws::rds::RdsInstance;
-use crate::errors::ArcError;
+use crate::models::influx::InfluxInstance;
+use crate::models::rds::RdsInstance;
+use crate::models::errors::ArcError;
 use crate::tasks::TaskResult;
 use crate::tasks::port_forward::PortForwardInfo;
 use crate::tasks::select_actuator_service::ActuatorService;
-use crate::tasks::select_aws_profile::AwsProfileInfo;
-use crate::tasks::select_kube_context::KubeContextInfo;
+use crate::models::kube_context::KubeContextInfo;
 use std;
-use crate::goals::Goal;
-use crate::organization::Organization;
+use crate::models::argo::ArgoCdInstance;
+use crate::models::aws_profile::AwsProfileInfo;
+use crate::models::github::GithubPrFile;
+use crate::models::goals::Goal;
+use crate::models::organization::Organization;
 
 pub struct State {
     results: HashMap<Goal, TaskResult>,
@@ -40,6 +42,13 @@ impl State {
         }
     }
 
+    pub(crate) fn get_argo_instance(&self, goal: &Goal) -> Result<&ArgoCdInstance, ArcError> {
+        match self.get(goal)? {
+            TaskResult::ArgoInstance(x) => Ok(x),
+            result => Err(ArcError::invalid_state(goal, "ArgoInstance", result)),
+        }
+    }
+
     pub(crate) fn get_aws_profile_info(&self, goal: &Goal) -> Result<&AwsProfileInfo, ArcError> {
         match self.get(goal)? {
             TaskResult::AwsProfile { profile, .. } => Ok(profile),
@@ -54,6 +63,13 @@ impl State {
                 Ok(secret_json)
             },
             result => Err(ArcError::invalid_state(goal, "AwsSecret", result)),
+        }
+    }
+    
+    pub(crate) fn get_github_pr_files(&self, goal: &Goal) -> Result<&Vec<GithubPrFile>, ArcError> {
+        match self.get(goal)? {
+            TaskResult::GithubPrFiles(files) => Ok(files),
+            result => Err(ArcError::invalid_state(goal, "GithubPrFiles", result)),
         }
     }
 
@@ -96,13 +112,6 @@ impl State {
         match self.get(goal)? {
             TaskResult::VaultSecret(x) => Ok(x.clone()),
             result => Err(ArcError::invalid_state(goal, "VaultSecret", result)),
-        }
-    }
-
-    pub(crate) fn get_vault_token(&self, goal: &Goal) -> Result<String, ArcError> {
-        match self.get(goal)? {
-            TaskResult::VaultToken(x) => Ok(x.clone()),
-            result => Err(ArcError::invalid_state(goal, "VaultToken", result)),
         }
     }
 }

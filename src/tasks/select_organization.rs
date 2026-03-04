@@ -1,11 +1,11 @@
 use cliclack::{intro, select};
 use async_trait::async_trait;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, GoalParams};
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, GoalParams};
 use crate::{GoalStatus, OutroText};
-use crate::config::CliConfig;
-use crate::organization::Organization;
-use crate::state::State;
+use crate::models::config::CliConfig;
+use crate::models::organization::Organization;
+use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 #[derive(Debug)]

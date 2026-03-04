@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use cliclack::intro;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, Goal, GoalParams};
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, Goal, GoalParams};
 use crate::{GoalStatus, OutroText};
-use crate::config::CliConfig;
-use crate::state::State;
+use crate::models::config::CliConfig;
+use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 #[derive(Debug)]
@@ -19,7 +19,7 @@ impl Task for LaunchInfluxTask {
 
     async fn execute(
         &self,
-        _params: &GoalParams,
+        params: &GoalParams,
         _config: &CliConfig,
         _global_params: &GlobalParams,
         state: &State
@@ -30,18 +30,24 @@ impl Task for LaunchInfluxTask {
             return Ok(GoalStatus::Needs(sso_goal));
         }
 
+        // Extract aws_profile from params
+        let aws_profile = match params {
+            GoalParams::InfluxLaunched { aws_profile } => aws_profile.clone(),
+            _ => None,
+        };
+
         // If an Influx instance has not yet been selected, we need to wait for that goal to complete
-        let influx_selection_goal = Goal::influx_instance_selected();
+        let influx_selection_goal = Goal::influx_instance_selected(aws_profile.clone());
         if !state.contains(&influx_selection_goal) {
             return Ok(GoalStatus::Needs(influx_selection_goal));
         }
 
         // Retrieve selected Influx instance from state
         let influx_instance = state.get_influx_instance(&influx_selection_goal)?;
+        let influx_secret_name = influx_instance.ui_secret_id().to_string();
 
         // If the password for this Influx instance has not yet been retrieved, we need to wait for that goal to complete
-        let influx_secret_name = influx_instance.ui_secret_id().to_string();
-        let secret_goal = Goal::aws_secret_known(influx_secret_name);
+        let secret_goal = Goal::aws_secret_known(influx_secret_name, aws_profile);
         if !state.contains(&secret_goal) {
             return Ok(GoalStatus::Needs(secret_goal));
         }

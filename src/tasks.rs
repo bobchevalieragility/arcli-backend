@@ -3,7 +3,6 @@ pub mod get_aws_secret;
 pub mod get_vault_secret;
 pub mod launch_influx;
 pub mod perform_sso;
-pub mod login_to_vault;
 pub mod port_forward;
 pub mod influx_dump;
 pub mod run_pgcli;
@@ -14,20 +13,26 @@ pub mod select_kube_context;
 pub mod select_organization;
 pub mod select_rds_instance;
 pub mod set_log_level;
+pub mod get_argo_app_statuses;
+pub mod get_github_pr_files;
+pub mod select_argo_instance;
 
 use async_trait::async_trait;
 use cliclack::progress_bar;
+use std::collections::BTreeMap;
 use crate::{GoalStatus, State};
-use crate::aws::influx::InfluxInstance;
-use crate::aws::rds::RdsInstance;
-use crate::config::CliConfig;
-use crate::errors::ArcError;
-use crate::goals::{GlobalParams, GoalParams};
-use crate::organization::Organization;
+use crate::models::influx::InfluxInstance;
+use crate::models::argo::{AppInfo, ArgoCdInstance};
+use crate::models::aws_profile::AwsProfileInfo;
+use crate::models::github::GithubPrFile;
+use crate::models::rds::RdsInstance;
+use crate::models::config::CliConfig;
+use crate::models::errors::ArcError;
+use crate::models::goals::{GlobalParams, GoalParams};
+use crate::models::organization::Organization;
 use crate::tasks::port_forward::PortForwardInfo;
 use crate::tasks::select_actuator_service::ActuatorService;
-use crate::tasks::select_aws_profile::AwsProfileInfo;
-use crate::tasks::select_kube_context::KubeContextInfo;
+use crate::models::kube_context::KubeContextInfo;
 
 #[async_trait]
 pub trait Task: Send + Sync {
@@ -44,8 +49,11 @@ pub trait Task: Send + Sync {
 #[derive(Debug)]
 pub enum TaskResult {
     ActuatorService(ActuatorService),
+    ArgoAppStatuses(BTreeMap<String, AppInfo>),
+    ArgoInstance(ArgoCdInstance),
     AwsProfile{ profile: AwsProfileInfo, updated: bool },
     AwsSecret(String),
+    GithubPrFiles(Vec<GithubPrFile>),
     InfluxCommand,
     InfluxInstance(InfluxInstance),
     InfluxDumpCompleted,
@@ -58,7 +66,6 @@ pub enum TaskResult {
     SsoSessionValid,
     TabCompletionsCreated,
     VaultSecret(String),
-    VaultToken(String),
 }
 
 impl TaskResult {

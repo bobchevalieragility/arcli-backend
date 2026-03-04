@@ -1,7 +1,8 @@
 use std::convert::From;
-use crate::aws::influx::InfluxInstance;
-use crate::aws::rds::RdsInstance;
-use crate::aws::vault::VaultInstance;
+use aws_runtime::env_config::section::EnvConfigSections;
+use crate::models::influx::InfluxInstance;
+use crate::models::rds::RdsInstance;
+use crate::models::vault::VaultInstance;
 
 #[derive(Debug)]
 pub enum AwsAccount {
@@ -55,5 +56,38 @@ impl AwsAccount {
             AwsAccount::Stage => vec![RdsInstance::WorkcellStage, RdsInstance::EventLogStage],
             _ => panic!("No RDS instances exist for this AWS account: {:?}", self),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct AwsProfileInfo {
+    pub name: String,
+    pub account: AwsAccount,
+    pub region: String,
+}
+
+impl From<(&str, &EnvConfigSections)> for AwsProfileInfo {
+    fn from((profile_name, env_config): (&str, &EnvConfigSections)) -> Self {
+        let profile = env_config.get_profile(profile_name)
+            .unwrap_or_else(|| panic!("Profile '{}' not found", profile_name));
+        let account_id = profile.get("sso_account_id")
+            .expect("sso_account_id not found in profile");
+        let account = AwsAccount::from(account_id);
+
+        let region= profile.get("region").unwrap_or("us-west-2");
+
+        AwsProfileInfo::new(profile_name.to_string(), account, region)
+    }
+}
+
+impl From<(&String, &EnvConfigSections)> for AwsProfileInfo {
+    fn from((profile_name, env_config): (&String, &EnvConfigSections)) -> Self {
+        AwsProfileInfo::from((profile_name.as_str(), env_config))
+    }
+}
+
+impl AwsProfileInfo {
+    pub fn new(name: String, account: AwsAccount, region: &str) -> AwsProfileInfo {
+        AwsProfileInfo { name, account, region: region.to_string() }
     }
 }
