@@ -81,7 +81,15 @@ impl Task for GetArgoAppStatusesTask {
         let argo_client = ArgoClient::new(argo_instance.clone())?;
 
         // Retrieve the initial status of all apps
-        let apps = argo_client.fetch_apps("arc", &target_versions).await?;
+        let apps = argo_client.fetch_apps("arc").await?;
+
+        let apps_to_monitor: Vec<&str> = if target_versions.is_empty() {
+            // Monitor all apps
+            apps.keys().map(|s| s.as_str()).collect()
+        } else {
+            // Monitor only those apps that are modified in the given PR
+            target_versions.keys().map(|s| s.as_str()).collect()
+        };
 
         // Extract snapshot goal parameter
         let snapshot = match params {
@@ -94,24 +102,31 @@ impl Task for GetArgoAppStatusesTask {
             let multi = multi_progress(format!("Waiting for ArgoCD ({}) applications to sync...", argo_instance.name()));
 
             // Create a progress spinner for each app
-            let mut spinners: HashMap<String, ProgressBar> = apps.values()
-                .map(|app| {
+            let mut spinners: HashMap<&str, ProgressBar> = apps_to_monitor.iter()
+                .map(|&name| {
                     let item = multi.add(spinner());
-                    (app.name.clone(), item)
+                    (name, item)
                 })
                 .collect();
 
             // Wait until all spinners have been added before starting any of them, just to be safe
-            for (app, spinner) in apps.values().zip(spinners.values()) {
-                spinner.start(format!(" {}", app.minimal_text()));
+            for (&name, spinner) in &spinners {
+                match apps.get(name) {
+                    Some(app) => {
+                        spinner.start(format!(" {}", app.minimal_text(false)));
+                    },
+                    None => {
+                        spinner.start(format!(" {:<30} {:<23} {:<40}", name, "-", "-"));
+                    }
+                }
             }
 
             // Loop until all apps are synced and corresponding spinners are stopped
-            spinners = update_progress(&apps, &target_versions, &spinners)?;
+            spinners = update_progress(&apps, &target_versions, spinners)?;
             while !spinners.is_empty() {
                 tokio::time::sleep(Duration::from_secs(2)).await;
-                let apps = argo_client.fetch_apps("arc", &target_versions).await?;
-                spinners = update_progress(&apps, &target_versions, &spinners)?;
+                let apps = argo_client.fetch_apps("arc").await?;
+                spinners = update_progress(&apps, &target_versions, spinners)?;
             }
 
             multi.stop();
@@ -121,8 +136,11 @@ impl Task for GetArgoAppStatusesTask {
             let mut rows = Vec::new();
             rows.push(AppInfo::header());
             rows.push("-".repeat(105));
-            for (_name, app) in &apps {
-                rows.push(app.to_string());
+            for name in apps_to_monitor.iter() {
+                let app_status = apps.get(*name)
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|| format!("❓ {:<30} {:<23} {:<40}", name, "-", "-"));
+                rows.push(app_status);
             }
 
             let status_msg = rows.join("\n");
@@ -134,29 +152,37 @@ impl Task for GetArgoAppStatusesTask {
     }
 }
 
-fn update_progress(
+fn update_progress<'a>(
     apps: &BTreeMap<String, AppInfo>,
     target_versions: &HashMap<String, String>,
-    spinners: &HashMap<String, ProgressBar>
-) -> Result<HashMap<String, ProgressBar>, ArcError> {
-    let mut unsynced_app_spinners: HashMap<String, ProgressBar> = HashMap::new();
+    spinners: HashMap<&'a str, ProgressBar>
+) -> Result<HashMap<&'a str, ProgressBar>, ArcError> {
+    let mut unsynced_app_spinners: HashMap<&str, ProgressBar> = HashMap::new();
 
     for (name, spinner) in spinners {
-        let app = apps.get(name)
-            .ok_or_else(|| ArcError::UserInputError(format!("Missing AppInfo for: {name}.")))?;
-        let target_version = target_versions.get(name).map(|s| s.as_str());
+        match apps.get(name) {
+            Some(app) => {
+                // let target_version = target_versions.get(name).map(|s| s.as_str());
+                let target_version = target_versions.get(name)
+                    .ok_or_else(|| ArcError::UserInputError(format!("Unknown target version for app: {}", name)))?;
 
-        // Update spinner's progress
-        if app.is_synced_to_target(target_version) {
-            spinner.stop(format!("✅ {}", app.minimal_text()));
-        } else {
-            unsynced_app_spinners.insert(name.to_string(), spinner.clone());
-        }
+                if app.is_version_updated(target_version) && app.is_synced() {
+                    spinner.stop(format!("✅ {}", app.minimal_text(true)));
+                } else if app.is_version_updated(target_version) {
+                    spinner.set_message(format!(" {}", app.minimal_text(true)));
+                    unsynced_app_spinners.insert(name, spinner);
+                } else {
+                    unsynced_app_spinners.insert(name, spinner);
+                }
+            },
+            None => {
+                spinner.stop(format!("❓ {:<30} {:<23} {:<40}", name, "-", "-"));
+            }
+        };
     }
 
     Ok(unsynced_app_spinners)
 }
-
 
 async fn parse_github_pr_files(files: &Vec<GithubPrFile>) -> Result<(ArgoCdInstance, HashMap<String, String>), ArcError> {
     // Grab the first changed file in the PR

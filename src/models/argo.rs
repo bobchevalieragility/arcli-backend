@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use console::style;
 use serde::Deserialize;
 use unicode_width::UnicodeWidthStr;
 use crate::models::aws_profile::{AwsAccount, AwsProfileInfo};
@@ -194,15 +195,21 @@ impl AppInfo {
         format!("{:<30} {:<8} {:<23} {:<40}", "Application", "Status", "Last Synced", "Version")
     }
 
-    pub(crate) fn minimal_text(&self) -> String {
-        format!("{:<30} {:<23} {:<40}", self.name, self.finished_at.as_deref().unwrap_or("unknown"), self.image_tag)
+    pub(crate) fn minimal_text(&self, is_version_updated: bool) -> String {
+        let current_version = if is_version_updated {
+            style(&self.image_tag).green().to_string()
+        } else {
+            self.image_tag.clone()
+        };
+        format!("{:<30} {:<23} {:<40}", self.name, self.finished_at.as_deref().unwrap_or("unknown"), current_version)
     }
 
-    pub(crate) fn is_synced_to_target(&self, target_version: Option<&str>) -> bool {
-        match target_version {
-            Some(version) => self.sync_status == "Synced" && self.image_tag == version,
-            None => self.sync_status == "Synced"
-        }
+    pub(crate) fn is_version_updated(&self, target_version: &str) -> bool {
+        self.image_tag == target_version
+    }
+
+    pub(crate) fn is_synced(&self) -> bool {
+        self.sync_status == "Synced"
     }
 }
 

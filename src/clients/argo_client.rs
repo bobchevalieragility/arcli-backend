@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use openidconnect::core::{CoreClient, CoreProviderMetadata, CoreResponseType};
 use openidconnect::{AuthenticationFlow, ClientId, CsrfToken, IssuerUrl, Nonce, PkceCodeChallenge, RedirectUrl, Scope};
 use reqwest::Client;
@@ -27,24 +26,19 @@ impl ArgoClient {
         Ok(Self { instance, client, keyring })
     }
 
-    pub async fn fetch_apps(
-        &self,
-        project: &str,
-        target_versions: &HashMap<String, String>,
-    ) -> Result<BTreeMap<String, AppInfo>, ArcError> {
+    pub async fn fetch_apps(&self, project: &str) -> Result<BTreeMap<String, AppInfo>, ArcError> {
         let argo_api_url = format!("{}/api/v1/applications?projects={project}", self.instance.base_url());
         let resp = self.guarded_fetch(&argo_api_url).await?;
 
-        let app_infos: BTreeMap<String, AppInfo> = serde_json::from_str::<ArgoApplicationList>(&resp.to_string())?.items
+        let apps: BTreeMap<String, AppInfo> = serde_json::from_str::<ArgoApplicationList>(&resp.to_string())?.items
             .into_iter()
-            .filter(|app| target_versions.contains_key(app.metadata.name.as_str()))
             .map(|app| {
                 let app_info: AppInfo = app.into();
                 (app_info.name.clone(), app_info)
             })
             .collect();
 
-        Ok(app_infos)
+        Ok(apps)
     }
 
     async fn guarded_fetch(&self, url: &str) -> Result<serde_json::Value, ArcError> {
