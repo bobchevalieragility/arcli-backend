@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use openidconnect::core::{CoreClient, CoreProviderMetadata, CoreResponseType};
 use openidconnect::{AuthenticationFlow, ClientId, CsrfToken, IssuerUrl, Nonce, PkceCodeChallenge, RedirectUrl, Scope};
 use reqwest::Client;
 use url::Url;
-use crate::models::argo::{AppInfo, ArgoCdInstance, ArgoTokenResponse, ArgoApplicationList, ArgocdSettings};
+use crate::models::argo::{AppInfo, ArgoCdInstance, ArgoTokenResponse, ArgoApplicationList, ArgocdSettings, ArgoSensorResource, SensorManifest};
 use crate::clients::{auth_success_response, extract_query_param};
 use crate::models::errors::ArcError;
 use crate::keyrings::argo_keyring::ArgoKeyring;
@@ -26,11 +26,11 @@ impl ArgoClient {
         Ok(Self { instance, client, keyring })
     }
 
-    pub async fn fetch_apps(&self, project: &str) -> Result<BTreeMap<String, AppInfo>, ArcError> {
+    pub async fn fetch_apps(&self, project: &str) -> Result<HashMap<String, AppInfo>, ArcError> {
         let argo_api_url = format!("{}/api/v1/applications?projects={project}", self.instance.base_url());
         let resp = self.guarded_fetch(&argo_api_url).await?;
 
-        let apps: BTreeMap<String, AppInfo> = serde_json::from_str::<ArgoApplicationList>(&resp.to_string())?.items
+        let mut apps: HashMap<String, AppInfo> = serde_json::from_str::<ArgoApplicationList>(&resp.to_string())?.items
             .into_iter()
             .map(|app| {
                 let app_info: AppInfo = app.into();
@@ -38,7 +38,32 @@ impl ArgoClient {
             })
             .collect();
 
+        // workflow-worker is a special case since it's a K8 Sensor resource
+        if let Some(worker_app) = apps.remove("workflow-worker") {
+            let namespace = self.instance.k8_namespace();
+            let worker_manifest = self.fetch_sensor_manifest("workflow-worker", namespace, "workflow-worker").await?;
+            let image_tag = worker_manifest.image_tag();
+            let updated_app = worker_app.with_image_tag(&image_tag);
+            apps.insert("workflow-worker".to_string(), updated_app);
+        }
+
         Ok(apps)
+    }
+
+    pub async fn fetch_sensor_manifest(&self, app_name: &str, namespace: &str, sensor_name: &str) -> Result<SensorManifest, ArcError> {
+        let argo_api_url = format!(
+            "{}/api/v1/applications/{}/resource?namespace={}&resourceName={}&version=v1alpha1&kind=Sensor&group=argoproj.io",
+            self.instance.base_url(),
+            app_name,
+            namespace,
+            sensor_name
+        );
+
+        let resp = self.guarded_fetch(&argo_api_url).await?;
+        let sensor_resource = serde_json::from_value::<ArgoSensorResource>(resp)?;
+        let manifest = serde_json::from_str::<SensorManifest>(&sensor_resource.manifest)?;
+
+        Ok(manifest)
     }
 
     async fn guarded_fetch(&self, url: &str) -> Result<serde_json::Value, ArcError> {

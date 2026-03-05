@@ -19,7 +19,7 @@ pub mod select_argo_instance;
 
 use async_trait::async_trait;
 use cliclack::progress_bar;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use crate::{GoalStatus, State};
 use crate::models::influx::InfluxInstance;
 use crate::models::argo::{AppInfo, ArgoCdInstance};
@@ -49,7 +49,7 @@ pub trait Task: Send + Sync {
 #[derive(Debug)]
 pub enum TaskResult {
     ActuatorService(ActuatorService),
-    ArgoAppStatuses(BTreeMap<String, AppInfo>),
+    ArgoAppStatuses(HashMap<String, AppInfo>),
     ArgoInstance(ArgoCdInstance),
     AwsProfile{ profile: AwsProfileInfo, updated: bool },
     AwsSecret(String),

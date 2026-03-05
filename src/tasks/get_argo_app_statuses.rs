@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::time::Duration;
 use cliclack::{intro, multi_progress, spinner, ProgressBar};
 use async_trait::async_trait;
@@ -83,13 +83,14 @@ impl Task for GetArgoAppStatusesTask {
         // Retrieve the initial status of all apps
         let apps = argo_client.fetch_apps("arc").await?;
 
-        let apps_to_monitor: Vec<&str> = if target_versions.is_empty() {
+        let mut apps_to_monitor: Vec<&str> = if target_versions.is_empty() {
             // Monitor all apps
             apps.keys().map(|s| s.as_str()).collect()
         } else {
             // Monitor only those apps that are modified in the given PR
             target_versions.keys().map(|s| s.as_str()).collect()
         };
+        apps_to_monitor.sort();
 
         // Extract snapshot goal parameter
         let snapshot = match params {
@@ -153,7 +154,7 @@ impl Task for GetArgoAppStatusesTask {
 }
 
 fn update_progress<'a>(
-    apps: &BTreeMap<String, AppInfo>,
+    apps: &HashMap<String, AppInfo>,
     target_versions: &HashMap<String, String>,
     spinners: HashMap<&'a str, ProgressBar>
 ) -> Result<HashMap<&'a str, ProgressBar>, ArcError> {

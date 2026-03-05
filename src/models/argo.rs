@@ -7,6 +7,7 @@ use crate::models::aws_profile::{AwsAccount, AwsProfileInfo};
 const ARGO_DEV_NAME: &str = "dev";
 const ARGO_STAGE_NAME: &str = "stage";
 const ARGO_PROD_NAME: &str = "prod";
+const SYNCED: &str = "Synced";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ArgoCdInstance {
@@ -29,6 +30,14 @@ impl ArgoCdInstance {
             ArgoCdInstance::Dev => ARGO_DEV_NAME,
             ArgoCdInstance::Stage => ARGO_STAGE_NAME,
             ArgoCdInstance::Prod => ARGO_PROD_NAME,
+        }
+    }
+
+    pub fn k8_namespace(&self) -> &str {
+        match self {
+            ArgoCdInstance::Dev => "development",
+            ArgoCdInstance::Prod => "production",
+            ArgoCdInstance::Stage => "staging",
         }
     }
 
@@ -123,6 +132,17 @@ pub struct AppInfo {
     pub(crate) image_tag: String,
 }
 
+impl AppInfo {
+    pub(crate) fn with_image_tag(self, image_tag: &str) -> AppInfo {
+        AppInfo {
+            name: self.name,
+            sync_status: self.sync_status,
+            finished_at: self.finished_at,
+            image_tag: image_tag.to_string(),
+        }
+    }
+}
+
 impl From<ArgoApplication> for AppInfo {
     fn from(argo_app: ArgoApplication) -> Self {
         // Lookup the resource identifiers for this app
@@ -166,7 +186,7 @@ fn extract_resource_image_tag(argo_app: &ArgoApplication, group: &str, kind: &st
         .and_then(|sr| sr.resources.iter()
             .find(|r| r.group == group && r.kind == kind && r.name == repo_name)
             .and_then(|r| r.images.first())
-            .and_then(|i: &String| i.split(':').nth(1).map(|s| s.to_string())))
+            .and_then(|i: &String| i.split(':').nth(1).map(ToString::to_string)))
 }
 
 fn extract_summary_image_tags(argo_app: &ArgoApplication) -> HashMap<&str, &str> {
@@ -209,13 +229,13 @@ impl AppInfo {
     }
 
     pub(crate) fn is_synced(&self) -> bool {
-        self.sync_status == "Synced"
+        self.sync_status == SYNCED
     }
 }
 
 impl std::fmt::Display for AppInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let emoji = if self.sync_status == "Synced" { "✅" } else { "❌" };
+        let emoji = if self.sync_status == SYNCED { "✅" } else { "❌" };
         let emoji_width = emoji.width();
         let emoji_padding = " ".repeat(8_usize.saturating_sub(emoji_width));
         write!(
@@ -228,6 +248,75 @@ impl std::fmt::Display for AppInfo {
             self.image_tag
         )
     }
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct ArgoSensorResource {
+    pub(crate) manifest: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct SensorManifest {
+    pub(crate) spec: SensorSpec,
+}
+
+impl SensorManifest {
+    pub(crate) fn image_tag(&self) -> String {
+        self.spec.triggers.first()
+            .and_then(|t| t.template.k8s.as_ref())
+            .map(|k| &k.source.resource.spec.templates)
+            .and_then(|templates| templates.first())
+            .and_then(|wt| wt.container.as_ref())
+            .and_then(|c| c.image.split(':').last().map(ToString::to_string))
+            .unwrap_or_else(|| "unknown".to_string())
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct SensorSpec {
+    #[serde(default)]
+    pub(crate) triggers: Vec<SensorTrigger>,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct SensorTrigger {
+    pub(crate) template: SensorTriggerTemplate,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct SensorTriggerTemplate {
+    pub(crate) k8s: Option<K8sTrigger>,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct K8sTrigger {
+    pub(crate) source: K8sSource,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct K8sSource {
+    pub(crate) resource: WorkflowWorkerResource,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct WorkflowWorkerResource {
+    pub(crate) spec: WorkflowWorkerSpec,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct WorkflowWorkerSpec {
+    #[serde(default)]
+    pub(crate) templates: Vec<WorkflowWorkerTemplate>,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct WorkflowWorkerTemplate {
+    pub(crate) container: Option<Container>,
+}
+
+#[derive(Deserialize, Debug)]
+pub(crate) struct Container {
+    pub(crate) image: String,
 }
 
 #[derive(Deserialize, Debug)]
