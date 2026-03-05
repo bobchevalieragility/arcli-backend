@@ -11,6 +11,7 @@ use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 use reqwest::header::{AUTHORIZATION, USER_AGENT};
+use crate::models::aws_profile::AwsAccount;
 
 pub const SECRET_PATH: &str = "mp/arcli-backend-services-gitops";
 pub const APP_ID_FIELD: &str = "APP_ID";
@@ -33,23 +34,18 @@ impl Task for GetGithubPrFilesTask {
         _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
-        // Extract aws_profile arg from params
-        let aws_profile = match params {
-            GoalParams::InfluxInstanceSelected { aws_profile, .. } => aws_profile.clone(),
-            _ => None,
-        };
-
-        // Fetch GitHub AppID from Vault
+        // Fetch GitHub AppID from dev namespace of NonProd Vault (any vault instance would do)
+        let aws_account = Some(AwsAccount::Dev);
         let app_id_goal = Goal::vault_secret_known(
-            SECRET_PATH.to_string(), Some(APP_ID_FIELD.to_string()), aws_profile.clone()
+            SECRET_PATH.to_string(), Some(APP_ID_FIELD.to_string()), aws_account, None
         );
         if !state.contains(&app_id_goal) {
             return Ok(GoalStatus::Needs(app_id_goal));
         }
 
-        // Fetch GitHub private key from Vault
+        // Fetch GitHub AppID from dev namespace of NonProd Vault (any vault instance would do)
         let private_key_goal = Goal::vault_secret_known(
-            SECRET_PATH.to_string(), Some(PRIVATE_KEY_FIELD.to_string()), aws_profile
+            SECRET_PATH.to_string(), Some(PRIVATE_KEY_FIELD.to_string()), aws_account, None
         );
         if !state.contains(&private_key_goal) {
             return Ok(GoalStatus::Needs(private_key_goal));

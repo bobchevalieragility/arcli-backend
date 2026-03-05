@@ -36,8 +36,8 @@ impl CliArgs {
 
     pub(crate) fn to_goals(self) -> Vec<Goal> {
         match self.command {
-            CliCommand::Argo { snapshot, pull_request, aws_profile } => vec![
-                Goal::terminal_argo(snapshot, pull_request, aws_profile)
+            CliCommand::Argo { pull_request} => vec![
+                Goal::terminal_argo(pull_request)
             ],
             CliCommand::AwsSecret { name, aws_profile } => vec![Goal::terminal_aws_secret_known(name, aws_profile)],
             CliCommand::Completions => vec![Goal::terminal_tab_completions()],
@@ -206,9 +206,6 @@ pub enum CliCommand {
     Completions,
     #[command(about = "Monitor ArgoCD application statuses")]
     Argo {
-        #[arg(short, long, help = "Just print current statuses, don't monitor until synced")]
-        snapshot: bool,
-
         #[arg(
             short, long,
             help = "PR number, from services-gitops, used to infer which apps to monitor",
@@ -217,15 +214,6 @@ pub enum CliCommand {
         )]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         pull_request: Option<u32>,
-
-        // #[arg(
-        //     short, long, help = "ArgoCD environment, used to infer the ArgoCD API endpoint",
-        //     conflicts_with = "pull_request"
-        // )]
-        // environment: Option<String>,
-        #[arg(short = 'a', long, help = "Use AWS profile to infer ArgoCD and/or Vault instance", num_args = 0..=1, default_missing_value = "PROMPT")]
-        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
-        aws_profile: Option<String>,
     },
 }
 

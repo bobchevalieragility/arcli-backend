@@ -2,6 +2,7 @@ use std;
 use std::convert::From;
 use chrono::{DateTime, NaiveDate, Utc};
 use crate::models::args::PROMPT;
+use crate::models::aws_profile::AwsAccount;
 use crate::tasks::Task;
 use crate::tasks::create_tab_completions::CreateTabCompletionsTask;
 use crate::tasks::get_aws_secret::GetAwsSecretTask;
@@ -69,9 +70,8 @@ impl Goal {
         repo: String,
         pull_request: Option<u32>,
         lookback_duration: Option<std::time::Duration>,
-        aws_profile: Option<String>,
     ) -> Self {
-        let params = GoalParams::GithubPrFilesKnown { repo, pull_request, lookback_duration, aws_profile };
+        let params = GoalParams::GithubPrFilesKnown { repo, pull_request, lookback_duration };
         Goal::new(GoalType::GithubPrFilesKnown, params)
     }
 
@@ -169,22 +169,23 @@ impl Goal {
         Goal::new(GoalType::ArgoInstanceSelected, GoalParams::None)
     }
 
-    pub fn terminal_argo(snapshot: bool, pull_request: Option<u32>, aws_profile: Option<String>) -> Self {
-        let params = GoalParams::ArgoStatusesKnown { snapshot, pull_request, aws_profile };
+    pub fn terminal_argo(pull_request: Option<u32>) -> Self {
+        let params = GoalParams::ArgoStatusesKnown { pull_request };
         Goal::new_terminal(GoalType::ArgoStatusKnown, params)
     }
 
-    pub fn vault_secret_known(secret_path: String, field: Option<String>, aws_profile: Option<String>) -> Self {
+    pub fn vault_secret_known(secret_path: String, field: Option<String>, aws_account: Option<AwsAccount>, aws_profile: Option<String>) -> Self {
         let params = GoalParams::VaultSecretKnown {
             path: Some(secret_path),
             field,
+            aws_account,
             aws_profile,
         };
         Goal::new(GoalType::VaultSecretKnown, params)
     }
 
     pub fn terminal_vault_secret_known(path: Option<String>, field: Option<String>, aws_profile: Option<String>) -> Self {
-        let params = GoalParams::VaultSecretKnown { path, field, aws_profile };
+        let params = GoalParams::VaultSecretKnown { path, field, aws_account: None, aws_profile };
         Goal::new_terminal(GoalType::VaultSecretKnown, params)
     }
 }
@@ -257,9 +258,7 @@ pub struct GlobalParams {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum GoalParams {
     ArgoStatusesKnown {
-        snapshot: bool,
         pull_request: Option<u32>,
-        aws_profile: Option<String>,
     },
     AwsProfileSelected {
         profile: String,
@@ -273,7 +272,6 @@ pub enum GoalParams {
         repo: String,
         pull_request: Option<u32>,
         lookback_duration: Option<std::time::Duration>,
-        aws_profile: Option<String>,
     },
     InfluxDumpCompleted {
         day: Option<NaiveDate>,
@@ -317,6 +315,7 @@ pub enum GoalParams {
     VaultSecretKnown {
         path: Option<String>,
         field: Option<String>,
+        aws_account: Option<AwsAccount>,
         aws_profile: Option<String>,
     },
 }

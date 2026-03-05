@@ -10,6 +10,7 @@ use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 use crate::models::argo::{AppInfo, ArgoCdInstance};
 use crate::clients::argo_client::ArgoClient;
+use crate::models::aws_profile::AwsProfileInfo;
 use crate::models::github::GithubPrFile;
 
 #[derive(Debug)]
@@ -31,17 +32,16 @@ impl Task for GetArgoAppStatusesTask {
     ) -> Result<GoalStatus, ArcError> {
         // Determine which ArgoCD instance to query and optionally which apps to filter
         let (argo_instance, target_versions) = match params {
-            GoalParams::ArgoStatusesKnown { pull_request: Some(pr), aws_profile, .. } => {
+            GoalParams::ArgoStatusesKnown { pull_request: Some(pr) } => {
                 // Construct params for GitHub goal
                 let repo = "services-gitops".to_string();
                 let (pull_request, lookback_duration) =  if *pr == 0u32 {
+                    // We use a sentinel value of zero when user specifies '-pr' option without a value
                     (None, Some(Duration::from_mins(10)))
                 } else {
                     (Some(*pr), None)
                 };
-                let github_goal = Goal::github_pr_files_known(
-                    repo, pull_request, lookback_duration, aws_profile.clone()
-                );
+                let github_goal = Goal::github_pr_files_known(repo, pull_request, lookback_duration);
 
                 // If we haven't obtained GitHub PR files yet, we need to wait for that goal to complete
                 if !state.contains(&github_goal) {
@@ -52,27 +52,24 @@ impl Task for GetArgoAppStatusesTask {
                 let pr_files = state.get_github_pr_files(&github_goal)?;
                 parse_github_pr_files(pr_files).await?
             },
-            GoalParams::ArgoStatusesKnown { pull_request: None, aws_profile: Some(profile), .. } => {
-                // If AWS profile info is not available, we need to wait for that goal to complete
-                let profile_goal = Goal::aws_profile_selected(Some(profile.clone()));
-                if !state.contains(&profile_goal) {
-                    return Ok(GoalStatus::Needs(profile_goal));
-                }
+            GoalParams::ArgoStatusesKnown { pull_request: None } => {
+                if let Some(profile) = AwsProfileInfo::current().await {
+                    // An AWS profile is currently active, so use it to infer ArgoCD instance
+                    (ArgoCdInstance::from(&profile), HashMap::new())
+                } else {
+                    // No AWS profile is currently active, prompt user to select ArgoCD instance
+                    //TODO inline this selection logic
+                    // If an Argo instance has not yet been selected, we need to wait for that goal to complete
+                    let argo_selection_goal = Goal::argo_instance_selected();
+                    if !state.contains(&argo_selection_goal) {
+                        return Ok(GoalStatus::Needs(argo_selection_goal));
+                    }
 
-                // Retrieve info about the desired AWS profile from state
-                let profile_info = state.get_aws_profile_info(&profile_goal)?;
-                (ArgoCdInstance::from(profile_info), HashMap::new())
-            },
-            GoalParams::ArgoStatusesKnown { pull_request: None, aws_profile: None, .. } => {
-                // If an Argo instance has not yet been selected, we need to wait for that goal to complete
-                let argo_selection_goal = Goal::argo_instance_selected();
-                if !state.contains(&argo_selection_goal) {
-                    return Ok(GoalStatus::Needs(argo_selection_goal));
-                }
+                    // Retrieve selected Argo instance from state
+                    let argo_instance = state.get_argo_instance(&argo_selection_goal)?;
+                    (argo_instance.clone(), HashMap::new())
 
-                // Retrieve selected Argo instance from state
-                let argo_instance = state.get_argo_instance(&argo_selection_goal)?;
-                (argo_instance.clone(), HashMap::new())
+                }
             },
             _ => return Err(ArcError::invalid_goal_params(GoalType::ArgoStatusKnown, params)),
         };
@@ -92,13 +89,24 @@ impl Task for GetArgoAppStatusesTask {
         };
         apps_to_monitor.sort();
 
-        // Extract snapshot goal parameter
-        let snapshot = match params {
-            GoalParams::ArgoStatusesKnown { snapshot, .. } => *snapshot,
-            _ => return Err(ArcError::invalid_goal_params(GoalType::ArgoStatusKnown, params)),
-        };
+        if target_versions.is_empty() {
+            // Just show a single snapshot of the current status as a table
+            let mut rows = Vec::new();
+            rows.push(AppInfo::header());
+            rows.push("-".repeat(105));
+            for name in apps_to_monitor.iter() {
+                let app_status = apps.get(*name)
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|| format!("❓ {:<30} {:<23} {:<40}", name, "-", "-"));
+                rows.push(app_status);
+            }
 
-        if !snapshot {
+            let status_msg = rows.join("\n");
+            let prompt = format!("ArgoCD Application Status ({})", argo_instance.name());
+            let outro_text = OutroText::multi(prompt, status_msg);
+
+            Ok(GoalStatus::Completed(TaskResult::ArgoAppStatuses(apps), outro_text))
+        } else {
             // Continually update the app statuses until all apps are synced
             let multi = multi_progress(format!("Waiting for ArgoCD ({}) applications to sync...", argo_instance.name()));
 
@@ -132,23 +140,6 @@ impl Task for GetArgoAppStatusesTask {
 
             multi.stop();
             Ok(GoalStatus::Completed(TaskResult::ArgoAppStatuses(apps), OutroText::None))
-        } else {
-            // Just show a single snapshot of the current status as a table
-            let mut rows = Vec::new();
-            rows.push(AppInfo::header());
-            rows.push("-".repeat(105));
-            for name in apps_to_monitor.iter() {
-                let app_status = apps.get(*name)
-                    .map(|a| a.to_string())
-                    .unwrap_or_else(|| format!("❓ {:<30} {:<23} {:<40}", name, "-", "-"));
-                rows.push(app_status);
-            }
-
-            let status_msg = rows.join("\n");
-            let prompt = format!("ArgoCD Application Status ({})", argo_instance.name());
-            let outro_text = OutroText::multi(prompt, status_msg);
-
-            Ok(GoalStatus::Completed(TaskResult::ArgoAppStatuses(apps), outro_text))
         }
     }
 }

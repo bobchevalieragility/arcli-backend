@@ -54,7 +54,7 @@ impl Task for InfluxDumpTask {
 
         // If the token for this Influx instance has not yet been retrieved, we need to wait for that goal to complete
         let (path, field) = influx_instance.cli_secret_info();
-        let secret_goal = Goal::vault_secret_known(path.to_string(), Some(field.to_string()), aws_profile);
+        let secret_goal = Goal::vault_secret_known(path.to_string(), Some(field.to_string()), None, aws_profile);
         if !state.contains(&secret_goal) {
             return Ok(GoalStatus::Needs(secret_goal));
         }
