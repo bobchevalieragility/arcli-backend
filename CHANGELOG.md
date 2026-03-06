@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.3.1](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.0...v0.3.1)
+
+### 🐛 Bug Fixes
+
+
+- Extract Argo workflow-worker version from Sensor resource - ([deb78f9](https://github.com/bobchevalieragility/arc-cli/commit/deb78f9673998d1f4b59a0adbda370331a2a43a8))
+- Fix duplicate Argo app status rows - ([bfccfb1](https://github.com/bobchevalieragility/arc-cli/commit/bfccfb1b2eed1cd8fe96182d798583998a7b391d))
+
+### 🚜 Refactor
+
+
+- Create Get and Set subcommands of Logging - ([2019e5f](https://github.com/bobchevalieragility/arc-cli/commit/2019e5f9b00f88d2c4dee8c5bc9d22b2d013720a))
+- Make vault and aws secrets mgr commands sub-commands - ([ffee175](https://github.com/bobchevalieragility/arc-cli/commit/ffee1755c10e667cc60fb482589ccf3afcaa24d8))
+
+
 ## [0.3.0](https://github.com/bobchevalieragility/arc-cli/compare/v0.2.6...v0.3.0)
 
 ### ⛰️ Features
