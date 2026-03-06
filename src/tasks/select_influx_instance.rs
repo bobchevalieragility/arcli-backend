@@ -2,7 +2,7 @@ use cliclack::{intro, select};
 use async_trait::async_trait;
 use crate::models::influx::InfluxInstance;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams};
+use crate::models::goals::{Goal, GoalParams};
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::state::State;
@@ -22,7 +22,6 @@ impl Task for SelectInfluxInstanceTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Extract aws_profile arg from params

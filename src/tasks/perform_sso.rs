@@ -13,7 +13,7 @@ use crate::{GoalStatus, OutroText};
 use crate::models::get_env_configs;
 use crate::models::config::CliConfig;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, GoalParams};
+use crate::models::goals::GoalParams;
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
@@ -31,7 +31,6 @@ impl Task for PerformSsoTask {
         &self,
         _params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         _state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Load AWS config to determine the name of the SSO session for currently selected profile

@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use crate::models::errors::ArcError;
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
-use crate::models::goals::{GlobalParams, GoalParams};
+use crate::models::goals::GoalParams;
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
@@ -21,7 +21,6 @@ impl Task for SelectActuatorServiceTask {
         &self,
         _params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         _state: &State
     ) -> Result<GoalStatus, ArcError> {
         let services = ActuatorService::all();

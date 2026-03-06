@@ -27,7 +27,7 @@ use crate::models::github::GithubPrFile;
 use crate::models::rds::RdsInstance;
 use crate::models::config::CliConfig;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, GoalParams};
+use crate::models::goals::GoalParams;
 use crate::models::organization::Organization;
 use crate::tasks::port_forward::PortForwardInfo;
 use crate::tasks::select_actuator_service::ActuatorService;
@@ -40,7 +40,6 @@ pub trait Task: Send + Sync {
         &self,
         params: &GoalParams,
         config: &CliConfig,
-        global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError>;
 }

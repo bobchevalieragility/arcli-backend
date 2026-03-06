@@ -3,7 +3,7 @@ use cliclack::{intro, select};
 use crate::tasks::{Task, TaskResult};
 use crate::clients::vault_client::VaultClient;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::state::State;
@@ -22,7 +22,6 @@ impl Task for GetVaultSecretTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         let client = match params {

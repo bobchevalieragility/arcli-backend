@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use cliclack::{intro, select};
 use serde_json::Value;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::log_level::LogLevel;
@@ -23,7 +23,6 @@ impl Task for LoggingTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Ensure that SSO token has not expired

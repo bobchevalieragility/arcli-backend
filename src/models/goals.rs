@@ -253,12 +253,6 @@ impl From<GoalType> for String {
     }
 }
 
-pub struct GlobalParams {
-    // pub aws_profile: Option<String>,
-    // pub kube_context: Option<String>,
-    pub raw_output: bool,
-}
-
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum GoalParams {
     ArgoStatusesKnown {

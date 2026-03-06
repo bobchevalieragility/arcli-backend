@@ -3,7 +3,7 @@ use std;
 use std::convert::From;
 use std::path::PathBuf;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-use crate::models::goals::{GlobalParams, Goal};
+use crate::models::goals::Goal;
 use crate::models::log_level::LogLevel;
 
 // This constant must be kept in sync with its usage in the #[arg] attributes below
@@ -19,21 +19,13 @@ pub struct CliArgs {
         hide = true,
         help = "Print to std_out (useful when calling `arc` from scripts)"
     )]
-    raw_output: bool,
+    pub(crate) raw_output: bool,
 
     #[command(subcommand)]
     pub(crate) command: CliCommand,
 }
 
 impl CliArgs {
-    pub(crate) fn global_params(&self) -> GlobalParams {
-        GlobalParams {
-            // aws_profile: self.aws_profile.clone(),
-            // kube_context: self.kube_context.clone(),
-            raw_output: self.raw_output,
-        }
-    }
-
     pub(crate) fn to_goals(self) -> Vec<Goal> {
         match self.command {
             CliCommand::Argo { pull_request} => vec![

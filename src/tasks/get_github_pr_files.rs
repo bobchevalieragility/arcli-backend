@@ -7,7 +7,7 @@ use crate::models::github::GithubPr;
 use crate::models::github::GithubPrFile;
 use crate::models::config::CliConfig;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 use reqwest::header::{AUTHORIZATION, USER_AGENT};
@@ -31,7 +31,6 @@ impl Task for GetGithubPrFilesTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Fetch GitHub AppID from dev namespace of NonProd Vault (any vault instance would do)

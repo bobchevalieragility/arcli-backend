@@ -6,7 +6,7 @@ use crate::models::aws_profile::AwsProfileInfo;
 use crate::models::get_env_configs;
 use crate::models::config::CliConfig;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, GoalParams, GoalType};
+use crate::models::goals::{GoalParams, GoalType};
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
@@ -24,7 +24,6 @@ impl Task for SelectAwsProfileTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         _state: &State
     ) -> Result<GoalStatus, ArcError> {
         if let GoalParams::AwsProfileSelected{ use_current: true, .. } = params {

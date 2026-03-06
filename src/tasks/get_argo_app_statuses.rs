@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 use crate::models::argo::{AppInfo, ArgoCdInstance};
@@ -27,7 +27,6 @@ impl Task for GetArgoAppStatusesTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Determine which ArgoCD instance to query and optionally which apps to filter

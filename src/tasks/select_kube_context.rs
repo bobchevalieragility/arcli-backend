@@ -7,7 +7,7 @@ use crate::models::errors::ArcError;
 use crate::{GoalStatus, OutroText};
 use crate::models::args::PROMPT;
 use crate::models::config::CliConfig;
-use crate::models::goals::{GlobalParams, GoalParams, GoalType};
+use crate::models::goals::{GoalParams, GoalType};
 use crate::models::kube_context::{KubeCluster, KubeContextInfo};
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
@@ -26,7 +26,6 @@ impl Task for SelectKubeContextTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         _state: &State
     ) -> Result<GoalStatus, ArcError> {
         if let GoalParams::KubeContextSelected{ use_current: true, .. } = params {
