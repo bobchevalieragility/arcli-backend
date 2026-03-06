@@ -39,7 +39,16 @@ impl CliArgs {
             CliCommand::Argo { pull_request} => vec![
                 Goal::terminal_argo(pull_request)
             ],
-            CliCommand::AwsSecret { name, aws_profile } => vec![Goal::terminal_aws_secret_known(name, aws_profile)],
+            CliCommand::Secret { store } => {
+                match store {
+                    SecretStore::Aws { name, aws_profile } => vec![
+                        Goal::terminal_aws_secret_known(name, aws_profile)
+                    ],
+                    SecretStore::Vault { path, field, aws_profile } => vec![
+                        Goal::terminal_vault_secret_known(path, field, aws_profile)
+                    ],
+                }
+            },
             CliCommand::Completions => vec![Goal::terminal_tab_completions()],
             CliCommand::LogLevel { service, package, level, display_only, kube_context } => vec![
                 Goal::terminal_log_level_set(service, package, level, display_only, kube_context)
@@ -71,9 +80,6 @@ impl CliArgs {
                     ],
                 }
             },
-            CliCommand::Vault { path, field, aws_profile } => vec![
-                Goal::terminal_vault_secret_known(path, field, aws_profile)
-            ],
         }
     }
 }
@@ -102,26 +108,10 @@ pub enum CliCommand {
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         kube_context: Option<String>,
     },
-    #[command(about = "Retrieve a secret value from AWS Secrets Manager")]
-    AwsSecret {
-        #[arg(short, long, help = "Name of the secret to retrieve (if omitted, will prompt)")]
-        name: Option<String>,
-
-        #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
-        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
-        aws_profile: Option<String>,
-    },
-    #[command(about = "Retrieve a secret value from Vault")]
-    Vault {
-        #[arg(short, long, help = "Path to secret to retrieve (if omitted, will prompt)")]
-        path: Option<String>,
-
-        #[arg(short, long, help = "Field within secret to retrieve (defaults to entire secret)")]
-        field: Option<String>,
-
-        #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
-        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
-        aws_profile: Option<String>,
+    #[command(about = "Retrieve a secret value from AWS Secrets Manager or Vault")]
+    Secret {
+        #[command(subcommand)]
+        store: SecretStore,
     },
     #[command(about = "Launch pgcli to interact with a Postgres RDS instance")]
     Pgcli {
@@ -214,6 +204,31 @@ pub enum CliCommand {
         )]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         pull_request: Option<u32>,
+    },
+}
+
+#[derive(Subcommand, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum SecretStore {
+    #[command(about = "Retrieve a secret from AWS Secrets Manager")]
+    Aws {
+        #[arg(short, long, help = "Name of the secret to retrieve (if omitted, will prompt)")]
+        name: Option<String>,
+
+        #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
+        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
+        aws_profile: Option<String>,
+    },
+    #[command(about = "Retrieve a secret from Vault")]
+    Vault {
+        #[arg(short, long, help = "Path to secret to retrieve (if omitted, will prompt)")]
+        path: Option<String>,
+
+        #[arg(short, long, help = "Field within secret to retrieve (defaults to entire secret)")]
+        field: Option<String>,
+
+        #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
+        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
+        aws_profile: Option<String>,
     },
 }
 
