@@ -8,7 +8,6 @@ use crate::tasks::port_forward::PortForwardInfo;
 use crate::tasks::select_actuator_service::ActuatorService;
 use crate::models::kube_context::KubeContextInfo;
 use std;
-use crate::models::argo::ArgoCdInstance;
 use crate::models::aws_profile::AwsProfileInfo;
 use crate::models::github::GithubPrFile;
 use crate::models::goals::Goal;
@@ -39,13 +38,6 @@ impl State {
         match self.get(goal)? {
             TaskResult::ActuatorService(x) => Ok(x),
             result => Err(ArcError::invalid_state(goal, "ActuatorService", result)),
-        }
-    }
-
-    pub(crate) fn get_argo_instance(&self, goal: &Goal) -> Result<&ArgoCdInstance, ArcError> {
-        match self.get(goal)? {
-            TaskResult::ArgoInstance(x) => Ok(x),
-            result => Err(ArcError::invalid_state(goal, "ArgoInstance", result)),
         }
     }
 

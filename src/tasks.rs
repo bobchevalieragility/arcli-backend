@@ -12,23 +12,22 @@ pub mod select_influx_instance;
 pub mod select_kube_context;
 pub mod select_organization;
 pub mod select_rds_instance;
-pub mod set_log_level;
+pub mod logging;
 pub mod get_argo_app_statuses;
 pub mod get_github_pr_files;
-pub mod select_argo_instance;
 
 use async_trait::async_trait;
 use cliclack::progress_bar;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use crate::{GoalStatus, State};
 use crate::models::influx::InfluxInstance;
-use crate::models::argo::{AppInfo, ArgoCdInstance};
+use crate::models::argo::AppInfo;
 use crate::models::aws_profile::AwsProfileInfo;
 use crate::models::github::GithubPrFile;
 use crate::models::rds::RdsInstance;
 use crate::models::config::CliConfig;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, GoalParams};
+use crate::models::goals::GoalParams;
 use crate::models::organization::Organization;
 use crate::tasks::port_forward::PortForwardInfo;
 use crate::tasks::select_actuator_service::ActuatorService;
@@ -41,7 +40,6 @@ pub trait Task: Send + Sync {
         &self,
         params: &GoalParams,
         config: &CliConfig,
-        global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError>;
 }
@@ -49,8 +47,7 @@ pub trait Task: Send + Sync {
 #[derive(Debug)]
 pub enum TaskResult {
     ActuatorService(ActuatorService),
-    ArgoAppStatuses(BTreeMap<String, AppInfo>),
-    ArgoInstance(ArgoCdInstance),
+    ArgoAppStatuses(HashMap<String, AppInfo>),
     AwsProfile{ profile: AwsProfileInfo, updated: bool },
     AwsSecret(String),
     GithubPrFiles(Vec<GithubPrFile>),

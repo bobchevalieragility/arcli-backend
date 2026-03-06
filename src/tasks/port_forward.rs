@@ -11,7 +11,7 @@ use kube::config::Kubeconfig;
 use tokio::task::AbortHandle;
 use crate::models::kube_service::KubeService;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
 use crate::models::args::PROMPT;
 use crate::models::config::CliConfig;
@@ -33,7 +33,6 @@ impl Task for PortForwardTask {
         &self,
         params: &GoalParams,
         config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Ensure that SSO token has not expired

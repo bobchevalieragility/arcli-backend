@@ -6,7 +6,7 @@ use crate::models::args::CliArgs;
 use crate::{config_dir, GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, GoalParams};
+use crate::models::goals::{GoalParams};
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
@@ -24,7 +24,6 @@ impl Task for CreateTabCompletionsTask {
         &self,
         _params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         _state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Get a list of all available RDS instances for this account

@@ -6,7 +6,7 @@ use crate::models::aws_profile::AwsProfileInfo;
 use crate::models::get_env_configs;
 use crate::models::config::CliConfig;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, GoalParams, GoalType};
+use crate::models::goals::{GoalParams, GoalType};
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
@@ -24,19 +24,14 @@ impl Task for SelectAwsProfileTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         _state: &State
     ) -> Result<GoalStatus, ArcError> {
-        let env_configs = get_env_configs().await?;
         if let GoalParams::AwsProfileSelected{ use_current: true, .. } = params {
             // User wants to use current AWS_PROFILE, if it's already set
-            let current_profile = env_configs.selected_profile();
-
-            if current_profile != "default" {
-                let info = AwsProfileInfo::from((current_profile, &env_configs));
+            if let Some(profile) = AwsProfileInfo::current().await {
                 let key = "Using current AWS profile".to_string();
-                let outro_text = OutroText::single(key, info.name.clone());
-                let task_result = TaskResult::AwsProfile{ profile: info, updated: false };
+                let outro_text = OutroText::single(key, profile.name.clone());
+                let task_result = TaskResult::AwsProfile{ profile, updated: false };
                 return Ok(GoalStatus::Completed(task_result, outro_text));
             }
         }
@@ -70,6 +65,7 @@ impl Task for SelectAwsProfileTask {
         let outro_text = OutroText::single(key, selected_aws_profile.clone());
 
         // Create task result
+        let env_configs = get_env_configs().await?;
         let info = AwsProfileInfo::from((&selected_aws_profile, &env_configs));
         let task_result = TaskResult::AwsProfile{ profile: info, updated: true };
 

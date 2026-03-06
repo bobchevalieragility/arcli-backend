@@ -2,7 +2,7 @@ use cliclack::{intro, select};
 use async_trait::async_trait;
 use crate::models::rds::RdsInstance;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams};
+use crate::models::goals::{Goal, GoalParams};
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::state::State;
@@ -22,7 +22,6 @@ impl Task for SelectRdsInstanceTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Extract aws_profile from params

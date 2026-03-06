@@ -1,19 +1,19 @@
 use async_trait::async_trait;
 use cliclack::{intro, select};
-use clap::ValueEnum;
 use serde_json::Value;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
+use crate::models::log_level::LogLevel;
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 #[derive(Debug)]
-pub struct SetLogLevelTask;
+pub struct LoggingTask;
 
 #[async_trait]
-impl Task for SetLogLevelTask {
+impl Task for LoggingTask {
     fn print_intro(&self) -> Result<(), ArcError> {
         intro("Log Level")?;
         Ok(())
@@ -23,7 +23,6 @@ impl Task for SetLogLevelTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Ensure that SSO token has not expired
@@ -34,6 +33,7 @@ impl Task for SetLogLevelTask {
 
         // Extract the optional service name from params
         let (service_arg, kube_context_arg) = match params {
+            GoalParams::LogLevelKnown{ service, kube_context, .. } => (service, kube_context),
             GoalParams::LogLevelSet{ service, kube_context, .. } => (service, kube_context),
             _ => return Err(ArcError::invalid_goal_params(GoalType::LogLevelSet, params)),
         };
@@ -59,24 +59,22 @@ impl Task for SetLogLevelTask {
         // Retrieve port-forwarding info from state
         let port_fwd_info = &state.get_port_forward_infos(&port_fwd_goal)?[0];
 
-        // Extract parameters from args
-        let (package, display_only) = match params {
-            GoalParams::LogLevelSet{ package, display_only, .. } => (package, display_only),
-            _ => return Err(ArcError::invalid_goal_params(GoalType::LogLevelSet, params)),
-        };
+        let outro_text = match params {
+            GoalParams::LogLevelKnown{ package,.. } => {
+                // We only want to display the current log level
+                display_log_level(package, port_fwd_info.service.local_port).await
+            },
+            GoalParams::LogLevelSet{ package,.. } => {
+                // We want to change the log level
+                let level = match params {
+                    GoalParams::LogLevelSet{ level: Some(level), .. } => level.clone(),
+                    GoalParams::LogLevelSet{ level: None, .. } => prompt_for_log_level()?,
+                    _ => return Err(ArcError::invalid_goal_params(GoalType::LogLevelSet, params)),
+                };
 
-        let outro_text = if *display_only {
-            // We only want to display the current log level
-            display_log_level(package, port_fwd_info.service.local_port).await
-        } else {
-            // We want to change the log level
-            let level = match params {
-                GoalParams::LogLevelSet{ level: Some(level), .. } => level.clone(),
-                GoalParams::LogLevelSet{ level: None, .. } => prompt_for_log_level()?,
-                _ => return Err(ArcError::invalid_goal_params(GoalType::LogLevelSet, params)),
-            };
-
-            set_log_level(package, port_fwd_info.service.local_port, &level).await
+                set_log_level(package, port_fwd_info.service.local_port, &level).await
+            },
+            _ => return Err(ArcError::invalid_goal_params(GoalType::LogLevelKnown, params)),
         };
 
         Ok(GoalStatus::Completed(TaskResult::LogLevel, outro_text))
@@ -105,7 +103,7 @@ async fn display_log_level(package: &str, local_port: u16) -> OutroText {
     OutroText::None
 }
 
-async fn set_log_level(package: &str, local_port: u16, level: &Level) -> OutroText {
+async fn set_log_level(package: &str, local_port: u16, level: &LogLevel) -> OutroText {
     // Make HTTP POST request to the actuator/loggers endpoint
     let url = format!("http://localhost:{}/actuator/loggers/{}", local_port, package);
 
@@ -128,8 +126,8 @@ async fn set_log_level(package: &str, local_port: u16, level: &Level) -> OutroTe
     OutroText::None
 }
 
-fn prompt_for_log_level() -> Result<Level, ArcError> {
-    let available_levels = Level::all();
+fn prompt_for_log_level() -> Result<LogLevel, ArcError> {
+    let available_levels = LogLevel::all();
 
     let mut menu = select("Select desired log level");
     for level in &available_levels {
@@ -137,69 +135,5 @@ fn prompt_for_log_level() -> Result<Level, ArcError> {
     }
 
     let selected_level = menu.interact()?;
-    Ok(Level::from(selected_level))
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, ValueEnum)]
-pub enum Level {
-    Trace,
-    Debug,
-    Info,
-    Warn,
-    Error,
-    Off,
-    Inherit,
-}
-
-impl Level {
-    pub fn name(&self) -> &str {
-        match self {
-            Level::Trace => "TRACE",
-            Level::Debug => "DEBUG",
-            Level::Info => "INFO",
-            Level::Warn => "WARN",
-            Level::Error => "ERROR",
-            Level::Off => "OFF",
-            Level::Inherit => "INHERIT",
-        }
-    }
-
-    pub fn value(&self) -> Value {
-        match self {
-            Level::Trace => Value::String("trace".to_string()),
-            Level::Debug => Value::String("debug".to_string()),
-            Level::Info => Value::String("info".to_string()),
-            Level::Warn => Value::String("warn".to_string()),
-            Level::Error => Value::String("error".to_string()),
-            Level::Off => Value::String("off".to_string()),
-            Level::Inherit => Value::Null,
-        }
-    }
-
-    fn all() -> Vec<Level> {
-        vec![
-            Level::Trace,
-            Level::Debug,
-            Level::Info,
-            Level::Warn,
-            Level::Error,
-            Level::Off,
-            Level::Inherit,
-        ]
-    }
-}
-
-impl From<&str> for Level {
-    fn from(level_name: &str) -> Self {
-        match level_name {
-            "TRACE" => Level::Trace,
-            "DEBUG" => Level::Debug,
-            "INFO" => Level::Info,
-            "WARN" => Level::Warn,
-            "ERROR" => Level::Error,
-            "OFF" => Level::Off,
-            "INHERIT" => Level::Inherit,
-            _ => panic!("Unknown log Level: {level_name}"),
-        }
-    }
+    Ok(LogLevel::from(selected_level))
 }

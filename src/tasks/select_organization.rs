@@ -1,7 +1,7 @@
 use cliclack::{intro, select};
 use async_trait::async_trait;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, GoalParams};
+use crate::models::goals::GoalParams;
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::organization::Organization;
@@ -22,7 +22,6 @@ impl Task for SelectOrganizationTask {
         &self,
         _params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         _state: &State
     ) -> Result<GoalStatus, ArcError> {
         let available_orgs = Organization::all();

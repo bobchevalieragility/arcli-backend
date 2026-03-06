@@ -4,7 +4,7 @@ use chrono::Utc;
 use cliclack::intro;
 use reqwest;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::state::State;
@@ -28,7 +28,6 @@ impl Task for InfluxDumpTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
         // Ensure that SSO token has not expired
@@ -54,7 +53,7 @@ impl Task for InfluxDumpTask {
 
         // If the token for this Influx instance has not yet been retrieved, we need to wait for that goal to complete
         let (path, field) = influx_instance.cli_secret_info();
-        let secret_goal = Goal::vault_secret_known(path.to_string(), Some(field.to_string()), aws_profile);
+        let secret_goal = Goal::vault_secret_known(path.to_string(), Some(field.to_string()), None, aws_profile);
         if !state.contains(&secret_goal) {
             return Ok(GoalStatus::Needs(secret_goal));
         }

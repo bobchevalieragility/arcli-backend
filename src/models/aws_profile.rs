@@ -1,10 +1,11 @@
 use std::convert::From;
 use aws_runtime::env_config::section::EnvConfigSections;
+use crate::models::get_env_configs;
 use crate::models::influx::InfluxInstance;
 use crate::models::rds::RdsInstance;
 use crate::models::vault::VaultInstance;
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum AwsAccount {
     DataPlatform,
     Dev,
@@ -89,5 +90,20 @@ impl From<(&String, &EnvConfigSections)> for AwsProfileInfo {
 impl AwsProfileInfo {
     pub fn new(name: String, account: AwsAccount, region: &str) -> AwsProfileInfo {
         AwsProfileInfo { name, account, region: region.to_string() }
+    }
+
+    pub async fn current() -> Option<Self> {
+        match get_env_configs().await {
+            Ok(env_configs) => {
+                let current_profile_name = env_configs.selected_profile();
+                if current_profile_name != "default" {
+                    let profile_info = Self::from((current_profile_name, &env_configs));
+                    Some(profile_info)
+                } else {
+                    None
+                }
+            },
+            Err(_) => None, // If we can't read the env configs, just return None
+        }
     }
 }

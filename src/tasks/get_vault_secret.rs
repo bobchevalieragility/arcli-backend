@@ -3,7 +3,7 @@ use cliclack::{intro, select};
 use crate::tasks::{Task, TaskResult};
 use crate::clients::vault_client::VaultClient;
 use crate::models::errors::ArcError;
-use crate::models::goals::{GlobalParams, Goal, GoalParams, GoalType};
+use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
 use crate::models::state::State;
@@ -22,26 +22,28 @@ impl Task for GetVaultSecretTask {
         &self,
         params: &GoalParams,
         _config: &CliConfig,
-        _global_params: &GlobalParams,
         state: &State
     ) -> Result<GoalStatus, ArcError> {
-        // Extract aws_profile arg from params
-        let aws_profile = match params {
-            GoalParams::VaultSecretKnown { aws_profile, .. } => aws_profile.clone(),
-            _ => None,
+        let client = match params {
+            GoalParams::VaultSecretKnown{ aws_account: Some(account), .. } => {
+                VaultClient::new(account)
+            },
+            GoalParams::VaultSecretKnown{ aws_profile, .. } => {
+                // If AWS account wasn't provided, we'll infer it from an AWS profile
+                let profile_goal = Goal::aws_profile_selected(aws_profile.clone());
+                if !state.contains(&profile_goal) {
+                    //TODO does this short circuit execute() or populate client?
+                    return Ok(GoalStatus::Needs(profile_goal));
+                }
+
+                // Retrieve info about the AWS profile from state
+                let profile_info = state.get_aws_profile_info(&profile_goal)?;
+
+                // Create client for interacting with Vault
+                VaultClient::new(&profile_info.account)
+            },
+            _ => return Err(ArcError::invalid_goal_params(GoalType::VaultSecretKnown, params)),
         };
-
-        // If AWS profile info is not available, we need to wait for that goal to complete
-        let profile_goal = Goal::aws_profile_selected(aws_profile);
-        if !state.contains(&profile_goal) {
-            return Ok(GoalStatus::Needs(profile_goal));
-        }
-
-        // Retrieve info about the desired AWS profile from state
-        let profile_info = state.get_aws_profile_info(&profile_goal)?;
-
-        // Create client for interacting with Vault
-        let client = VaultClient::new(&profile_info.account);
 
         // Determine which secret to retrieve, prompting user if necessary
         let secret_path = match params {

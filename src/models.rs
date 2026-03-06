@@ -18,6 +18,7 @@ pub mod config;
 pub mod errors;
 pub mod aws_profile;
 pub mod kube_context;
+pub mod log_level;
 
 pub(crate) async fn get_env_configs() -> Result<EnvConfigSections, ArcError> {
     // Use real filesystem and environment access

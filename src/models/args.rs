@@ -3,8 +3,8 @@ use std;
 use std::convert::From;
 use std::path::PathBuf;
 use chrono::{DateTime, NaiveDate, TimeZone, Utc};
-use crate::tasks::set_log_level::Level;
-use crate::models::goals::{GlobalParams, Goal};
+use crate::models::goals::Goal;
+use crate::models::log_level::LogLevel;
 
 // This constant must be kept in sync with its usage in the #[arg] attributes below
 pub const PROMPT: &str = "PROMPT";
@@ -19,31 +19,39 @@ pub struct CliArgs {
         hide = true,
         help = "Print to std_out (useful when calling `arc` from scripts)"
     )]
-    raw_output: bool,
+    pub(crate) raw_output: bool,
 
     #[command(subcommand)]
     pub(crate) command: CliCommand,
 }
 
 impl CliArgs {
-    pub(crate) fn global_params(&self) -> GlobalParams {
-        GlobalParams {
-            // aws_profile: self.aws_profile.clone(),
-            // kube_context: self.kube_context.clone(),
-            raw_output: self.raw_output,
-        }
-    }
-
     pub(crate) fn to_goals(self) -> Vec<Goal> {
         match self.command {
-            CliCommand::Argo { snapshot, pull_request, aws_profile } => vec![
-                Goal::terminal_argo(snapshot, pull_request, aws_profile)
+            CliCommand::Argo { pull_request} => vec![
+                Goal::terminal_argo(pull_request)
             ],
-            CliCommand::AwsSecret { name, aws_profile } => vec![Goal::terminal_aws_secret_known(name, aws_profile)],
+            CliCommand::Logging { action } => {
+                match action {
+                    LoggingAction::Get { service, package, kube_context } => vec![
+                        Goal::terminal_log_level_known(service, package, kube_context)
+                    ],
+                    LoggingAction::Set { service, package, level, kube_context } => vec![
+                        Goal::terminal_log_level_set(service, package, level, kube_context)
+                    ],
+                }
+            },
+            CliCommand::Secret { store } => {
+                match store {
+                    SecretStore::Aws { name, aws_profile } => vec![
+                        Goal::terminal_aws_secret_known(name, aws_profile)
+                    ],
+                    SecretStore::Vault { path, field, aws_profile } => vec![
+                        Goal::terminal_vault_secret_known(path, field, aws_profile)
+                    ],
+                }
+            },
             CliCommand::Completions => vec![Goal::terminal_tab_completions()],
-            CliCommand::LogLevel { service, package, level, display_only, kube_context } => vec![
-                Goal::terminal_log_level_set(service, package, level, display_only, kube_context)
-            ],
             CliCommand::Pgcli { aws_profile } => vec![Goal::terminal_pgcli_running(aws_profile)],
             CliCommand::PortForward { namespace, service, port, group, kube_context } => vec![
                 Goal::terminal_port_forward_established(namespace, service, port, group, kube_context)
@@ -71,9 +79,6 @@ impl CliArgs {
                     ],
                 }
             },
-            CliCommand::Vault { path, field, aws_profile } => vec![
-                Goal::terminal_vault_secret_known(path, field, aws_profile)
-            ],
         }
     }
 }
@@ -81,47 +86,14 @@ impl CliArgs {
 #[derive(Subcommand, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CliCommand {
     #[command(about = "View or set the log level for a Java Spring Boot service")]
-    LogLevel {
-        #[arg(short, long, help = "Service name, e.g. 'metrics' (if omitted, will prompt)")]
-        service: Option<String>,
-
-        #[arg(
-            short, long,
-            help = "Package, e.g. 'com.agilityrobotics.metrics' (defaults to ROOT)",
-            default_value = "ROOT"
-        )]
-        package: String,
-
-        #[arg(short, long, help = "Desired log level (if omitted, will prompt)")]
-        level: Option<Level>,
-
-        #[arg(short, long, help = "Just print the current log level")]
-        display_only: bool,
-
-        #[arg(short = 'k', long, help = "Use K8 context", num_args = 0..=1, default_missing_value = "PROMPT")]
-        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
-        kube_context: Option<String>,
+    Logging {
+        #[command(subcommand)]
+        action: LoggingAction,
     },
-    #[command(about = "Retrieve a secret value from AWS Secrets Manager")]
-    AwsSecret {
-        #[arg(short, long, help = "Name of the secret to retrieve (if omitted, will prompt)")]
-        name: Option<String>,
-
-        #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
-        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
-        aws_profile: Option<String>,
-    },
-    #[command(about = "Retrieve a secret value from Vault")]
-    Vault {
-        #[arg(short, long, help = "Path to secret to retrieve (if omitted, will prompt)")]
-        path: Option<String>,
-
-        #[arg(short, long, help = "Field within secret to retrieve (defaults to entire secret)")]
-        field: Option<String>,
-
-        #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
-        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
-        aws_profile: Option<String>,
+    #[command(about = "Retrieve a secret value from AWS Secrets Manager or Vault")]
+    Secret {
+        #[command(subcommand)]
+        store: SecretStore,
     },
     #[command(about = "Launch pgcli to interact with a Postgres RDS instance")]
     Pgcli {
@@ -206,9 +178,6 @@ pub enum CliCommand {
     Completions,
     #[command(about = "Monitor ArgoCD application statuses")]
     Argo {
-        #[arg(short, long, help = "Just print current statuses, don't monitor until synced")]
-        snapshot: bool,
-
         #[arg(
             short, long,
             help = "PR number, from services-gitops, used to infer which apps to monitor",
@@ -217,15 +186,70 @@ pub enum CliCommand {
         )]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         pull_request: Option<u32>,
+    },
+}
 
-        // #[arg(
-        //     short, long, help = "ArgoCD environment, used to infer the ArgoCD API endpoint",
-        //     conflicts_with = "pull_request"
-        // )]
-        // environment: Option<String>,
-        #[arg(short = 'a', long, help = "Use AWS profile to infer ArgoCD and/or Vault instance", num_args = 0..=1, default_missing_value = "PROMPT")]
+#[derive(Subcommand, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum SecretStore {
+    #[command(about = "Retrieve a secret from AWS Secrets Manager")]
+    Aws {
+        #[arg(short, long, help = "Name of the secret to retrieve (if omitted, will prompt)")]
+        name: Option<String>,
+
+        #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         aws_profile: Option<String>,
+    },
+    #[command(about = "Retrieve a secret from Vault")]
+    Vault {
+        #[arg(short, long, help = "Path to secret to retrieve (if omitted, will prompt)")]
+        path: Option<String>,
+
+        #[arg(short, long, help = "Field within secret to retrieve (defaults to entire secret)")]
+        field: Option<String>,
+
+        #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
+        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
+        aws_profile: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LoggingAction {
+    #[command(about = "Get the current log level for a service")]
+    Get {
+        #[arg(short, long, help = "Service name, e.g. 'metrics' (if omitted, will prompt)")]
+        service: Option<String>,
+
+        #[arg(
+            short, long,
+            help = "Package, e.g. 'com.agilityrobotics.metrics' (defaults to ROOT)",
+            default_value = "ROOT"
+        )]
+        package: String,
+
+        #[arg(short = 'k', long, help = "Use K8 context", num_args = 0..=1, default_missing_value = "PROMPT")]
+        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
+        kube_context: Option<String>,
+    },
+    #[command(about = "Set the log level for a service")]
+    Set {
+        #[arg(short, long, help = "Service name, e.g. 'metrics' (if omitted, will prompt)")]
+        service: Option<String>,
+
+        #[arg(
+            short, long,
+            help = "Package, e.g. 'com.agilityrobotics.metrics' (defaults to ROOT)",
+            default_value = "ROOT"
+        )]
+        package: String,
+
+        #[arg(short, long, help = "Desired log level (if omitted, will prompt)")]
+        level: Option<LogLevel>,
+
+        #[arg(short = 'k', long, help = "Use K8 context", num_args = 0..=1, default_missing_value = "PROMPT")]
+        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
+        kube_context: Option<String>,
     },
 }
 

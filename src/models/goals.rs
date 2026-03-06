@@ -2,6 +2,8 @@ use std;
 use std::convert::From;
 use chrono::{DateTime, NaiveDate, Utc};
 use crate::models::args::PROMPT;
+use crate::models::aws_profile::AwsAccount;
+use crate::models::log_level::LogLevel;
 use crate::tasks::Task;
 use crate::tasks::create_tab_completions::CreateTabCompletionsTask;
 use crate::tasks::get_aws_secret::GetAwsSecretTask;
@@ -14,13 +16,12 @@ use crate::tasks::port_forward::PortForwardTask;
 use crate::tasks::influx_dump::InfluxDumpTask;
 use crate::tasks::run_pgcli::RunPgcliTask;
 use crate::tasks::select_actuator_service::SelectActuatorServiceTask;
-use crate::tasks::select_argo_instance::SelectArgoInstanceTask;
 use crate::tasks::select_aws_profile::SelectAwsProfileTask;
 use crate::tasks::select_influx_instance::SelectInfluxInstanceTask;
 use crate::tasks::select_kube_context::SelectKubeContextTask;
 use crate::tasks::select_organization::SelectOrganizationTask;
 use crate::tasks::select_rds_instance::SelectRdsInstanceTask;
-use crate::tasks::set_log_level::{Level, SetLogLevelTask};
+use crate::tasks::logging::LoggingTask;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Goal {
@@ -69,9 +70,8 @@ impl Goal {
         repo: String,
         pull_request: Option<u32>,
         lookback_duration: Option<std::time::Duration>,
-        aws_profile: Option<String>,
     ) -> Self {
-        let params = GoalParams::GithubPrFilesKnown { repo, pull_request, lookback_duration, aws_profile };
+        let params = GoalParams::GithubPrFilesKnown { repo, pull_request, lookback_duration };
         Goal::new(GoalType::GithubPrFilesKnown, params)
     }
 
@@ -109,14 +109,22 @@ impl Goal {
         Goal::new_terminal(GoalType::KubeContextSelected, params)
     }
 
+    pub fn terminal_log_level_known(
+        service: Option<String>,
+        package: String,
+        kube_context: Option<String>,
+    ) -> Self {
+        let params = GoalParams::LogLevelKnown { service, package, kube_context };
+        Goal::new_terminal(GoalType::LogLevelKnown, params)
+    }
+
     pub fn terminal_log_level_set(
         service: Option<String>,
         package: String,
-        level: Option<Level>,
-        display_only: bool,
+        level: Option<LogLevel>,
         kube_context: Option<String>,
     ) -> Self {
-        let params = GoalParams::LogLevelSet { service, package, level, display_only, kube_context };
+        let params = GoalParams::LogLevelSet { service, package, level, kube_context };
         Goal::new_terminal(GoalType::LogLevelSet, params)
     }
 
@@ -165,26 +173,23 @@ impl Goal {
         Goal::new_terminal(GoalType::TabCompletionsExist, GoalParams::None)
     }
 
-    pub fn argo_instance_selected() -> Self {
-        Goal::new(GoalType::ArgoInstanceSelected, GoalParams::None)
-    }
-
-    pub fn terminal_argo(snapshot: bool, pull_request: Option<u32>, aws_profile: Option<String>) -> Self {
-        let params = GoalParams::ArgoStatusesKnown { snapshot, pull_request, aws_profile };
+    pub fn terminal_argo(pull_request: Option<u32>) -> Self {
+        let params = GoalParams::ArgoStatusesKnown { pull_request };
         Goal::new_terminal(GoalType::ArgoStatusKnown, params)
     }
 
-    pub fn vault_secret_known(secret_path: String, field: Option<String>, aws_profile: Option<String>) -> Self {
+    pub fn vault_secret_known(secret_path: String, field: Option<String>, aws_account: Option<AwsAccount>, aws_profile: Option<String>) -> Self {
         let params = GoalParams::VaultSecretKnown {
             path: Some(secret_path),
             field,
+            aws_account,
             aws_profile,
         };
         Goal::new(GoalType::VaultSecretKnown, params)
     }
 
     pub fn terminal_vault_secret_known(path: Option<String>, field: Option<String>, aws_profile: Option<String>) -> Self {
-        let params = GoalParams::VaultSecretKnown { path, field, aws_profile };
+        let params = GoalParams::VaultSecretKnown { path, field, aws_account: None, aws_profile };
         Goal::new_terminal(GoalType::VaultSecretKnown, params)
     }
 }
@@ -198,7 +203,6 @@ impl From<&Goal> for String {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GoalType {
     ActuatorServiceSelected,
-    ArgoInstanceSelected,
     ArgoStatusKnown,
     AwsProfileSelected,
     AwsSecretKnown,
@@ -207,6 +211,7 @@ pub enum GoalType {
     InfluxLaunched,
     InfluxDumpCompleted,
     KubeContextSelected,
+    LogLevelKnown,
     LogLevelSet,
     OrganizationSelected,
     PgcliRunning,
@@ -221,7 +226,6 @@ impl GoalType {
     pub fn to_task(&self) -> Box<dyn Task> {
         match self {
             GoalType::ActuatorServiceSelected => Box::new(SelectActuatorServiceTask),
-            GoalType::ArgoInstanceSelected => Box::new(SelectArgoInstanceTask),
             GoalType::ArgoStatusKnown => Box::new(GetArgoAppStatusesTask),
             GoalType::AwsProfileSelected => Box::new(SelectAwsProfileTask),
             GoalType::AwsSecretKnown => Box::new(GetAwsSecretTask),
@@ -230,7 +234,8 @@ impl GoalType {
             GoalType::InfluxLaunched => Box::new(LaunchInfluxTask),
             GoalType::InfluxDumpCompleted => Box::new(InfluxDumpTask),
             GoalType::KubeContextSelected => Box::new(SelectKubeContextTask),
-            GoalType::LogLevelSet => Box::new(SetLogLevelTask),
+            GoalType::LogLevelKnown => Box::new(LoggingTask),
+            GoalType::LogLevelSet => Box::new(LoggingTask),
             GoalType::OrganizationSelected => Box::new(SelectOrganizationTask),
             GoalType::PgcliRunning => Box::new(RunPgcliTask),
             GoalType::PortForwardEstablished => Box::new(PortForwardTask),
@@ -248,18 +253,10 @@ impl From<GoalType> for String {
     }
 }
 
-pub struct GlobalParams {
-    // pub aws_profile: Option<String>,
-    // pub kube_context: Option<String>,
-    pub raw_output: bool,
-}
-
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum GoalParams {
     ArgoStatusesKnown {
-        snapshot: bool,
         pull_request: Option<u32>,
-        aws_profile: Option<String>,
     },
     AwsProfileSelected {
         profile: String,
@@ -273,7 +270,6 @@ pub enum GoalParams {
         repo: String,
         pull_request: Option<u32>,
         lookback_duration: Option<std::time::Duration>,
-        aws_profile: Option<String>,
     },
     InfluxDumpCompleted {
         day: Option<NaiveDate>,
@@ -292,11 +288,15 @@ pub enum GoalParams {
         context: String,
         use_current: bool,
     },
+    LogLevelKnown {
+        service: Option<String>,
+        package: String,
+        kube_context: Option<String>,
+    },
     LogLevelSet {
         service: Option<String>,
         package: String,
-        level: Option<Level>,
-        display_only: bool,
+        level: Option<LogLevel>,
         kube_context: Option<String>,
     },
     None,
@@ -317,6 +317,7 @@ pub enum GoalParams {
     VaultSecretKnown {
         path: Option<String>,
         field: Option<String>,
+        aws_account: Option<AwsAccount>,
         aws_profile: Option<String>,
     },
 }

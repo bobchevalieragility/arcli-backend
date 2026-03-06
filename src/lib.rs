@@ -12,7 +12,7 @@ use console::style;
 use models::errors::ArcError;
 use std;
 use models::config::CliConfig;
-use models::goals::{GlobalParams, Goal};
+use models::goals::Goal;
 use models::state::State;
 use crate::tasks::TaskResult;
 
@@ -26,21 +26,20 @@ pub async fn run(args: CliArgs) -> Result<(), ArcError> {
         CliConfig::default()
     };
 
-    // Extract top-level global parameters from the CLI args
-    let global_params = args.global_params();
+    let show_raw_output = args.raw_output;
 
     // A single ArcCommand may map to multiple goals
     // (e.g., Switch may require both AWS profile and Kube context selection)
     let terminal_goals = args.to_goals();
 
     // Execute each goal, including any dependent goals
-    execute_goals(terminal_goals, config, global_params).await
+    execute_goals(terminal_goals, config, show_raw_output).await
 }
 
 async fn execute_goals(
     terminal_goals: Vec<Goal>,
     config: CliConfig,
-    global_params: GlobalParams,
+    show_raw_output: bool,
 ) -> Result<(), ArcError> {
     let mut goals = terminal_goals.clone();
     let mut eval_string = String::new();
@@ -68,12 +67,7 @@ async fn execute_goals(
         }
 
         // Attempt to complete the next goal on the stack
-        let goal_result = task.execute(
-            params,
-            &config,
-            &global_params,
-            &state,
-        ).await;
+        let goal_result = task.execute(params, &config, &state).await;
 
         // If next goal indicates that it needs the result of a dependent goal, then add the
         // dependent goal onto the stack, leaving the original goal to be executed at a later time.
@@ -100,7 +94,7 @@ async fn execute_goals(
 
                     // Print value (to std_out) if --raw flag is provided
                     // This is useful when calling `arc` from scripts
-                    if global_params.raw_output {
+                    if show_raw_output {
                         println!("{raw_value}");
                     }
                 }
@@ -117,7 +111,7 @@ async fn execute_goals(
         }
     }
 
-    if !global_params.raw_output {
+    if !show_raw_output {
         // This is the final output that the parent shell should eval (unless called from a script)
         // All other program outputs are sent to stderr (i.e. clickack interactive menus, outros, etc).
         println!("__EVAL__{eval_string}");
