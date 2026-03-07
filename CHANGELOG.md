@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.2...v0.3.3)
+
+### 🐛 Bug Fixes
+
+
+- Force bash shell in CI - ([d49850f](https://github.com/bobchevalieragility/arc-cli/commit/d49850f7d1f2cb76e71573b6dc68702465a678f6))
+
+
 ## [0.3.2](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.1...v0.3.2)
 
 ### ⛰️ Features
