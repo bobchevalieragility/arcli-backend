@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.4](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.3...v0.3.4)
+
+### ⛰️ Features
+
+
+- Make influx dump files as annoated CSV - ([60c7a2b](https://github.com/bobchevalieragility/arc-cli/commit/60c7a2b47f00805d42695d790ff38e2de825de88))
+
+
 ## [0.3.3](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.2...v0.3.3)
 
 ### 🐛 Bug Fixes
