@@ -31,28 +31,7 @@ impl CliArgs {
             CliCommand::Argo { pull_request} => vec![
                 Goal::terminal_argo(pull_request)
             ],
-            CliCommand::Logging { action } => {
-                match action {
-                    LoggingAction::Get { service, package, kube_context } => vec![
-                        Goal::terminal_log_level_known(service, package, kube_context)
-                    ],
-                    LoggingAction::Set { service, package, level, kube_context } => vec![
-                        Goal::terminal_log_level_set(service, package, level, kube_context)
-                    ],
-                }
-            },
-            CliCommand::Secret { store } => {
-                match store {
-                    SecretStore::Aws { name, aws_profile } => vec![
-                        Goal::terminal_aws_secret_known(name, aws_profile)
-                    ],
-                    SecretStore::Vault { path, field, aws_profile } => vec![
-                        Goal::terminal_vault_secret_known(path, field, aws_profile)
-                    ],
-                }
-            },
             CliCommand::Completions => vec![Goal::terminal_tab_completions()],
-            CliCommand::Pgcli { aws_profile } => vec![Goal::terminal_pgcli_running(aws_profile)],
             CliCommand::Influx { action } => {
                 match action {
                     InfluxAction::Ui { aws_profile } => vec![
@@ -63,9 +42,30 @@ impl CliArgs {
                     ],
                 }
             },
+            CliCommand::Logging { action } => {
+                match action {
+                    LoggingAction::Get { service, package, kube_context } => vec![
+                        Goal::terminal_log_level_known(service, package, kube_context)
+                    ],
+                    LoggingAction::Set { service, package, level, kube_context } => vec![
+                        Goal::terminal_log_level_set(service, package, level, kube_context)
+                    ],
+                }
+            },
+            CliCommand::Pgcli { aws_profile } => vec![Goal::terminal_pgcli_running(aws_profile)],
             CliCommand::PortForward { namespace, service, port, group, kube_context } => vec![
                 Goal::terminal_port_forward_established(namespace, service, port, group, kube_context)
             ],
+            CliCommand::Secret { store } => {
+                match store {
+                    SecretStore::Aws { name, aws_profile } => vec![
+                        Goal::terminal_aws_secret_known(name, aws_profile)
+                    ],
+                    SecretStore::Vault { path, field, aws_profile } => vec![
+                        Goal::terminal_vault_secret_known(path, field, aws_profile)
+                    ],
+                }
+            },
             CliCommand::Switch { aws_profile, kube_context } => {
                 // Use global parameters to determine which prompts are needed, if any
                 match (aws_profile, kube_context) {
