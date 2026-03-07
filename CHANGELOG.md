@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.1...v0.3.2)
+
+### ⛰️ Features
+
+
+- Add windows release - ([0da1f78](https://github.com/bobchevalieragility/arc-cli/commit/0da1f783b74e969bfc6f7935bcd91fca35e8e11f))
+
+
 ## [0.3.1](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.0...v0.3.1)
 
 ### 🐛 Bug Fixes
