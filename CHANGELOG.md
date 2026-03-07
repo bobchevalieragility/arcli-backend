@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.5](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.4...v0.3.5)
+
+### 🚜 Refactor
+
+
+- Create sub-commands for influx-ui and influx-dump - ([0c9e5fa](https://github.com/bobchevalieragility/arc-cli/commit/0c9e5fa519d5f4ab2aa745be93cef266a03fdcdb))
+
+
 ## [0.3.4](https://github.com/bobchevalieragility/arc-cli/compare/v0.3.3...v0.3.4)
 
 ### ⛰️ Features
