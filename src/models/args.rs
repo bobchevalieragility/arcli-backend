@@ -57,8 +57,8 @@ impl CliArgs {
                 Goal::terminal_port_forward_established(namespace, service, port, group, kube_context)
             ],
             CliCommand::InfluxUi { aws_profile } => vec![Goal::terminal_influx_launched(aws_profile)],
-            CliCommand::InfluxDump { day, start, end, output, aws_profile } => vec![
-                Goal::terminal_influx_dump_completed(day, start, end, output, aws_profile)
+            CliCommand::InfluxDump { day, start, end, output_dir, file_per_measurement, aws_profile } => vec![
+                Goal::terminal_influx_dump_completed(day, start, end, output_dir, file_per_measurement, aws_profile)
             ],
             CliCommand::Switch { aws_profile, kube_context } => {
                 // Use global parameters to determine which prompts are needed, if any
@@ -132,8 +132,11 @@ pub enum CliCommand {
         )]
         end: Option<DateTime<Utc>>,
 
-        #[arg(short, long, help = "Path to output file")]
-        output: PathBuf,
+        #[arg(short, long, help = "Path to output file", default_value = ".")]
+        output_dir: PathBuf,
+
+        #[arg(short, long, default_value = "false", help = "Create separate files for each measurement type")]
+        file_per_measurement: bool,
 
         #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all

@@ -3,16 +3,25 @@ use chrono::NaiveTime;
 use chrono::Utc;
 use cliclack::intro;
 use reqwest;
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, ACCEPT};
 use crate::models::errors::ArcError;
 use crate::models::goals::{Goal, GoalParams, GoalType};
 use crate::{GoalStatus, OutroText};
 use crate::models::config::CliConfig;
+use crate::models::influx::InfluxInstance;
+use crate::models::organization::Organization;
 use crate::models::state::State;
 use crate::tasks::{Task, TaskResult};
 
 const DROPPED_COLS: [&str; 2] = ["_start", "_stop"];
-const FILTERED_COLS: [&str; 2] = ["result", "table"];
-const ORDERED_COLS: [&str; 4] = ["_time", "event_type", "_field", "_value"];
+
+const ALL_TABLES: [(&str, &str); 5] = [
+    ("intervention", "intervention_event"),
+    ("move", "move_item_event"),
+    ("shift", "shift_event"),
+    ("skill", "skill_event"),
+    ("work", "work_event"),
+];
 
 #[derive(Debug)]
 pub struct InfluxDumpTask;
@@ -37,8 +46,8 @@ impl Task for InfluxDumpTask {
         }
 
         // Extract parameters
-        let (day, start, end, output, aws_profile) = match params {
-            GoalParams::InfluxDumpCompleted { day, start, end, output, aws_profile } => (day, start, end, output, aws_profile.clone()),
+        let (day, start, end, output_dir, file_per_measurement, aws_profile) = match params {
+            GoalParams::InfluxDumpCompleted { day, start, end, output_dir, file_per_measurement, aws_profile } => (day, start, end, output_dir, *file_per_measurement, aws_profile.clone()),
             _ => return Err(ArcError::invalid_goal_params(GoalType::InfluxDumpCompleted, params)),
         };
 
@@ -68,7 +77,7 @@ impl Task for InfluxDumpTask {
         }
 
         // Retrieve organization from state
-        let organization = state.get_organization(&org_selection_goal)?;
+        let org = state.get_organization(&org_selection_goal)?;
 
         // Infer the start and end of the time range
         let (range_begin, range_end) = if let Some(start_time) = start {
@@ -86,111 +95,145 @@ impl Task for InfluxDumpTask {
         };
 
         // Apply Zulu format to the time range
-        let range_begin = range_begin.format("%Y-%m-%dT%H:%M:%SZ");
-        let range_end = range_end.format("%Y-%m-%dT%H:%M:%SZ");
+        let range_begin = range_begin.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let range_end = range_end.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-        // Build Flux query to get all data in the time range
         let dropped_cols = format!(r#"["{}"]"#, DROPPED_COLS.join(r#"", ""#));
-        let flux_query = format!(
-            r#"from(bucket: "metrics")
+        let client = reqwest::Client::new();
+
+        // Create the output directory if it doesn't exist
+        std::fs::create_dir_all(output_dir)?;
+
+        if file_per_measurement {
+            // Create a separate CSV file for each non-rollup table in InfluxDB
+            let mut outputs = Vec::new();
+            for (short_name, measurement) in ALL_TABLES.iter() {
+                let fetched_data = fetch_influx_data(
+                    &client,
+                    &token,
+                    &influx_instance,
+                    org,
+                    &dropped_cols,
+                    &range_begin,
+                    &range_end,
+                    vec![measurement]
+                ).await?;
+
+                // Write the fetched data to a CSV file
+                let filename = format!("{}.csv", short_name);
+                let output_path = output_dir.join(filename);
+                std::fs::write(&output_path, &fetched_data)?;
+                outputs.push(output_path.display().to_string());
+            }
+
+            let all_outputs = outputs.join("\n  ");
+            let msg = format!(
+                "Start : {}\nEnd   : {}\nOrg   : {}\nOutputs:\n  {}",
+                range_begin, range_end, org.id(), all_outputs
+            );
+            let outro_text = OutroText::multi("Influx Query Params".to_string(), msg);
+
+            Ok(GoalStatus::Completed(TaskResult::InfluxDumpCompleted, outro_text))
+        } else {
+            // Create a single CSV file with data from all non-rollup tables in InfluxDB
+            let tables: Vec<&str> = ALL_TABLES.iter().map(|(_, measurement)| *measurement).collect();
+
+            let fetched_data = fetch_influx_data(
+                &client,
+                &token,
+                &influx_instance,
+                org,
+                &dropped_cols,
+                &range_begin,
+                &range_end,
+                tables
+            ).await?;
+
+            // Write the fetched data to a CSV file
+            let output_path = output_dir.join("combined.csv");
+            std::fs::write(&output_path, &fetched_data)?;
+
+            let msg = format!(
+                "Start : {}\nEnd   : {}\nOrg   : {}\nOutput: {}",
+                range_begin, range_end, org.id(), output_path.display()
+            );
+            let outro_text = OutroText::multi("Influx Query Params".to_string(), msg);
+
+            Ok(GoalStatus::Completed(TaskResult::InfluxDumpCompleted, outro_text))
+        }
+    }
+}
+
+async fn fetch_influx_data(
+    client: &reqwest::Client,
+    token: &str,
+    influx_instance: &InfluxInstance,
+    org: &Organization,
+    dropped_cols: &str,
+    range_begin: &str,
+    range_end: &str,
+    table_names: Vec<&str>
+) -> Result<String, ArcError> {
+    // Build up InfluxDB filters from the provided table names and organization
+    let measurement_filters = table_names.iter()
+        .map(|name| format!(r#"r["_measurement"] == "{}""#, name))
+        .collect::<Vec<String>>().join(" or ");
+    let filters = format!(r#"fn: (r) => r["org_id"] == "{}" and {}"#, org.id(), measurement_filters);
+
+    // Define the Flux query
+    let flux_query = format!(
+        r#"from(bucket: "metrics")
               |> range(start: {}, stop: {})
-              |> filter(fn: (r) => r["org_id"] == "{}")
+              |> filter({})
               |> group()
               |> sort(columns: ["_time"])
               |> drop(columns: {})"#,
-            range_begin, range_end, organization.id(), dropped_cols
-        );
+        range_begin, range_end, filters, dropped_cols
+    );
 
-        // Execute the query
-        let client = reqwest::Client::new();
-        let url = format!("{}/api/v2/query?org=agility", influx_instance.url());
-
-        let response = client
-            .post(&url)
-            // .basic_auth(username, Some(password))
-            .header("Authorization", format!("Token {}", token))
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json")
-            .json(&serde_json::json!({
-                "query": flux_query,
-                "type": "flux"
-            }))
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(ArcError::influx_query_error(error_text));
+    // Explicitly specify a dialect so that we get an "annotated" CSV (with extra header lines)
+    let payload = serde_json::json!({
+        "query": flux_query,
+        "dialect": {
+            "annotations": ["datatype", "group", "default"],
+            "header": true,
+            "delimiter": ","
         }
+    });
 
-        let result_text = response.text().await?;
+    let url = format!("{}/api/v2/query?org=agility", influx_instance.url());
 
-        // Parse result_text as CSV to filter and format the output
-        let filtered_csv = filter_csv_columns(&result_text)?;
+    let response = client
+        .post(&url)
+        .header(AUTHORIZATION, format!("Token {}", token))
+        .header(CONTENT_TYPE, "application/json")
+        .header(ACCEPT, "application/csv")
+        .json(&payload)
+        .send()
+        .await?;
 
-        // Write the filtered CSV to the output file
-        std::fs::write(output, &filtered_csv)?;
-
-        let msg = format!(
-            "Start : {}\nEnd   : {}\nOrg   : {}\nOutput: {}",
-            range_begin, range_end, organization.id(), output.display()
-        );
-        let outro_text = OutroText::multi("Influx Query Params".to_string(), msg);
-
-        Ok(GoalStatus::Completed(TaskResult::InfluxDumpCompleted, outro_text))
+    if !response.status().is_success() {
+        let error_text = response.text().await?;
+        return Err(ArcError::influx_query_error(error_text));
     }
+
+    // Update the #datatype line to mark columns as ignored
+    let result_text = response.text().await?;
+    let modified_text = ignore_datatypes(&result_text);
+
+    Ok(modified_text)
 }
 
-fn filter_csv_columns(csv_text: &str) -> Result<String, ArcError> {
-    let mut output_lines = Vec::new();
-    let mut lines = csv_text.lines();
+fn ignore_datatypes(csv_text: &str) -> String {
+    let mut lines: Vec<String> = csv_text.lines().map(|line| line.to_string()).collect();
 
-    // Assume the first line is the header
-    let header = lines.next().ok_or_else(|| {
-        ArcError::influx_query_error("Empty CSV response")
-    })?;
-
-    // Parse the header to find column indices
-    // Lines begin with a comma, so the first element will be empty
-    let columns: Vec<&str> = header.split(',').collect();
-
-    // Find indices for _time and event_type
-    let mut ordered_indices: Vec<usize> = ORDERED_COLS.iter()
-        .filter_map(|&col_name| columns.iter().position(|&col| col.trim() == col_name))
-        .collect();
-
-    // Now add indices for all other columns (excluding filtered columns)
-    for (i, col) in columns.iter().enumerate() {
-        let col_name = col.trim();
-        // Keep all columns except leading empty column, filtered, and ordered columns
-        if !col_name.is_empty() && !FILTERED_COLS.contains(&col_name) && !ORDERED_COLS.contains(&col_name) {
-            ordered_indices.push(i);
+    // Find and update the line that starts with "#datatype"
+    for line in lines.iter_mut() {
+        if line.starts_with("#datatype") {
+            *line = line.replace("#datatype,string,long", "#datatype,ignored,ignored");
+            break;
         }
     }
 
-    // Build filtered header
-    let filtered_header: Vec<String> = ordered_indices
-        .iter()
-        .map(|&i| columns[i].to_string())
-        .collect();
-    output_lines.push(filtered_header.join(","));
-
-    // Process data rows
-    for line in lines {
-        if line.is_empty() {
-            output_lines.push(line.to_string());
-            continue;
-        }
-
-        let values: Vec<&str> = line.split(',').collect();
-        let filtered_values: Vec<String> = ordered_indices
-            .iter()
-            .filter_map(|&i| values.get(i).map(|v| v.to_string()))
-            .collect();
-
-        output_lines.push(filtered_values.join(","));
-    }
-
-    Ok(output_lines.join("\n"))
+    lines.join("\n")
 }
-

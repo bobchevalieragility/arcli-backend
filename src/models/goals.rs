@@ -89,10 +89,11 @@ impl Goal {
         day: Option<NaiveDate>,
         start: Option<DateTime<Utc>>,
         end: Option<DateTime<Utc>>,
-        output: std::path::PathBuf,
+        output_dir: std::path::PathBuf,
+        file_per_measurement: bool,
         aws_profile: Option<String>,
     ) -> Self {
-        let params = GoalParams::InfluxDumpCompleted { day, start, end, output, aws_profile };
+        let params = GoalParams::InfluxDumpCompleted { day, start, end, output_dir, file_per_measurement, aws_profile };
         Goal::new_terminal(GoalType::InfluxDumpCompleted, params)
     }
 
@@ -275,7 +276,8 @@ pub enum GoalParams {
         day: Option<NaiveDate>,
         start: Option<DateTime<Utc>>,
         end: Option<DateTime<Utc>>,
-        output: std::path::PathBuf,
+        output_dir: std::path::PathBuf,
+        file_per_measurement: bool,
         aws_profile: Option<String>,
     },
     InfluxInstanceSelected {
