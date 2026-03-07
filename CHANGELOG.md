@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.8](https://github.com/bobchevalieragility/arcli-backend/compare/v0.3.7...v0.3.8)
+
+### 🐛 Bug Fixes
+
+
+- Fix backend.sh wrapper script - ([5a63c14](https://github.com/bobchevalieragility/arcli-backend/commit/5a63c1423c0da72e78bb312e6f0f1322220257c7))
+
+
 ## [0.3.7](https://github.com/bobchevalieragility/arcli-backend/compare/v0.3.6...v0.3.7)
 
 
