@@ -3,24 +3,76 @@ This CLI tool unifies functionality from multiple tools (kubectl, awscli, pgcli,
 
 ![Help Menu](assets/help_menu.png)
 
-## Features
-- Command dependencies are automatically handled. For instance:
-  - If a command needs port-forwarding, a session will be automatically started/stopped
-  - If a command requires a secret, the secret will be automatically fetched from either Vault or AWS Secrets Manager
-  - If a command interacts with AWS and you don't have an active AWS profile, you'll be prompted to select one
-- If command args aren't explicitly provided, the user is prompted to interactively select from a menu.\
-  (So you don't have to remember every profile name, k8s context, service port, etc.)
-- Selection menus are context-aware, meaning values are filtered based on previously specified inputs.
-- Terminal isolation is enforced for Kubernetes contexts, meaning that multiple terminal sessions, with different contexts, can be open simultaneously.
-- It's built with Rust, ensuring high performance and reliability.
+## Prerequisites
+- [pgcli](https://www.pgcli.com/) (if utilizing the `pgcli` command)
+   ```bash
+   brew install pgcli
+   ```
+
+## Installation
+
+### Option 1: Automated Installer (Recommended)
+
+The easiest way to install arcli-backend is using the automated installer script:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/bobchevalieragility/arcli-backend/main/install.sh | bash
+```
+
+Or with wget:
+
+```bash
+wget -qO- https://raw.githubusercontent.com/bobchevalieragility/arcli-backend/main/install.sh | bash
+```
+
+The installer will:
+- Automatically detect your OS and architecture
+- Download and install latest release binary (to `~/.local/bin/backend` by default)
+- Download and install wrapper script and config (to `~/.arcli-backend/` by default)
+
+After installer completes do the following:
+1. Add this to your shell profile (~/.bashrc, ~/.zshrc, etc.)
+```bash
+source ~/.arcli-backend/backend.sh
+```
+2. Make sure `~/.local/bin` is in your PATH. If it's not, add this to your shell profile (~/.bashrc, ~/.zshrc, etc.)
+```bash
+export PATH="$PATH:$HOME/.local/bin"
+```
+
+#### Customizing the Installation
+
+You can customize the INSTALL_DIR or CONFIG_DIR:
+
+```bash
+INSTALL_DIR=/usr/local/bin curl -sSL https://raw.githubusercontent.com/bobchevalieragility/arcli-backend/main/install.sh | bash
+```
+
+### Option 2: From Source
+
+1. Install Rust (see https://www.rust-lang.org/tools/install for alternate methods)
+   ```bash
+   curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+   ```
+
+2. Download the source code:
+   ```bash
+   git clone git@github.com:bobchevalieragility/arcli-backend.git
+   cd arcli-backend
+   ```
+
+3. Build and install the binary:
+   ```bash
+   ./scripts/install-and-sign.sh
+   ```
 
 ## Examples
 ### Dynamically modify logging level of an Arc Backend service
 In addition to the desired logging level, the `log-level` command also needs to be told which service to modify, in which K8 cluster the service resides, and a port-forwarding session to the service must exist.  If any of this context does not exist in the current "state" of the program, the corresponding commands to gather that context will be automatically executed before the `log-level` command. Once the overall program execution completes, the port-forwarding session is automatically torn down.
 
-![pgcli](assets/demo-log-level.gif)
+![logging](assets/demo-log-level.gif)
 
-### Launch pgcli  
+### Launch pgcli
 Launching `pgcli` depends on knowing which AWS account to use and which instance of Postres to connect to. If any of that info is not explicitly provided, the corresponding commands to gather that context will be automatically executed, resulting in the user being prompted to provide the necessary context.
 
 ![pgcli](assets/demo-pgcli.gif)
@@ -28,62 +80,9 @@ Launching `pgcli` depends on knowing which AWS account to use and which instance
 ### Switch active AWS Profile and/or K8s Context
 The available AWS Profiles are inferred by inspecting ~/.aws/config.  Similarly, the available K8 Contexts are inferred by inspecting ~/.kube/config.
 
-![pgcli](assets/demo-switch.gif)
+![switch](assets/demo-switch.gif)
 
-## Prerequisites
-- [pgcli](https://www.pgcli.com/) (if utilizing the `pgcli` command) 
-   ```bash
-   brew install pgcli
-   ```
-
-## Installation
-
-### Option 1: From Source
-1. Install Rust (see https://www.rust-lang.org/tools/install for alternate methods)
-   ```bash
-   curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
-   ```
-2. Download the source code:
-   ```bash
-   git clone git@github.com:bobchevalieragility/arcli-backend.git
-   ```
-3. From the root of the project, build and install the binary:   
-   ```bash
-   cargo install --path .
-   ```
-4. Install the wrapper script:  
-   ```bash
-   mkdir ~/.arcli-backend
-   cp scripts/backend.sh ~/.arcli-backend/backend.sh
-   ```
-5. Source the wrapper script from your shell config file (.zshrc, .bashrc, etc.):
-   ```bash
-   echo 'source ~/.arcli-backend/backend.sh' >> ~/.zshrc
-   ```
-### Option 2: Pre-compiled Binaries
-1. Choose the binary type that is appropriate for your OS:
-   - MacOS ARM64: `backend-macos-arm64`
-   - MacOS x86_64: `backend-macos-amd64`
-   - Linux x86_64: `backend-linux-amd64`
-2. Download and install the latest version of the binary: 
-   ```bash
-   curl -LO https://github.com/bobchevalieragility/arcli-backend/releases/latest/download/backend-macos-arm64
-   chmod +x backend-macos-arm64
-   sudo mv backend-macos-arm64 /usr/local/bin/backend
-   ```
-3. Download and install the latest version of the wrapper script:
-   ```bash
-   curl -LO https://github.com/bobchevalieragility/arcli-backend/releases/latest/download/backend.sh
-   chmod +x backend.sh
-   mkdir ~/.arcli-backend
-   mv backend.sh ~/.arcli-backend/backend.sh
-   ```
-4. Source the wrapper script from your shell config file (.zshrc, .bashrc, etc.):
-   ```bash
-   echo 'source ~/.arcli-backend/backend.sh' >> ~/.zshrc
-   ```
-
-## Development
+## Contributing
 
 ### Commit Message Convention
 

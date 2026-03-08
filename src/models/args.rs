@@ -91,26 +91,34 @@ impl CliArgs {
 
 #[derive(Subcommand, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum CliCommand {
+    #[command(about = "Monitor ArgoCD application statuses")]
+    Argo {
+        #[arg(
+            short, long,
+            help = "PR number, from services-gitops, used to infer which apps to monitor",
+            num_args = 0..=1,
+            default_missing_value = "0",
+        )]
+        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
+        pull_request: Option<u32>,
+    },
+    #[command(about = "Generate a shell completion script")]
+    Completions,
+    #[command(about = "Interact with InfluxDB")]
+    Influx {
+        #[command(subcommand)]
+        action: InfluxAction,
+    },
     #[command(about = "View or set the log level for a Java Spring Boot service")]
     Logging {
         #[command(subcommand)]
         action: LoggingAction,
-    },
-    #[command(about = "Retrieve a secret value from AWS Secrets Manager or Vault")]
-    Secret {
-        #[command(subcommand)]
-        store: SecretStore,
     },
     #[command(about = "Launch pgcli to interact with a Postgres RDS instance")]
     Pgcli {
         #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         aws_profile: Option<String>,
-    },
-    #[command(about = "Interact with InfluxDB")]
-    Influx {
-        #[command(subcommand)]
-        action: InfluxAction,
     },
     #[command(about = "Start port-forwarding to one or more Kubernetes service(s)")]
     PortForward {
@@ -137,6 +145,11 @@ pub enum CliCommand {
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         kube_context: Option<String>,
     },
+    #[command(about = "Retrieve a secret value from AWS Secrets Manager or Vault")]
+    Secret {
+        #[command(subcommand)]
+        store: SecretStore,
+    },
     #[command(about = "Switch AWS profile and/or Kubernetes context")]
     Switch {
         #[arg(short = 'a', long, help = "Use AWS profile", num_args = 0..=1, default_missing_value = "PROMPT")]
@@ -146,19 +159,6 @@ pub enum CliCommand {
         #[arg(short = 'k', long, help = "Use K8 context", num_args = 0..=1, default_missing_value = "PROMPT")]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         kube_context: Option<String>,
-    },
-    #[command(about = "Generate a shell completion script")]
-    Completions,
-    #[command(about = "Monitor ArgoCD application statuses")]
-    Argo {
-        #[arg(
-            short, long,
-            help = "PR number, from services-gitops, used to infer which apps to monitor",
-            num_args = 0..=1,
-            default_missing_value = "0",
-        )]
-        // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
-        pull_request: Option<u32>,
     },
 }
 
