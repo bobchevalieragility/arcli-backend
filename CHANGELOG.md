@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.9](https://github.com/bobchevalieragility/arcli-backend/compare/v0.3.8...v0.3.9)
+
+### ⛰️ Features
+
+
+- Add installer script - ([92acd93](https://github.com/bobchevalieragility/arcli-backend/commit/92acd931c6b6350cd2de5cd0f783fd5292a073c6))
+
+
 ## [0.3.8](https://github.com/bobchevalieragility/arcli-backend/compare/v0.3.7...v0.3.8)
 
 ### 🐛 Bug Fixes
