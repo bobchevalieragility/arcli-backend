@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.10](https://github.com/bobchevalieragility/arcli-backend/compare/v0.3.9...v0.3.10)
+
+### ⛰️ Features
+
+
+- Add bazel command - ([c9bf27b](https://github.com/bobchevalieragility/arcli-backend/commit/c9bf27bd52eb6f949c55c7db1d1f49ac713a8ea2))
+
+
 ## [0.3.9](https://github.com/bobchevalieragility/arcli-backend/compare/v0.3.8...v0.3.9)
 
 ### ⛰️ Features
