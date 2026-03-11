@@ -6,6 +6,7 @@ pub mod perform_sso;
 pub mod port_forward;
 pub mod influx_dump;
 pub mod run_pgcli;
+pub mod run_bazel_target;
 pub mod select_actuator_service;
 pub mod select_aws_profile;
 pub mod select_influx_instance;
@@ -32,6 +33,7 @@ use crate::models::organization::Organization;
 use crate::tasks::port_forward::PortForwardInfo;
 use crate::tasks::select_actuator_service::ActuatorService;
 use crate::models::kube_context::KubeContextInfo;
+use crate::tasks::run_bazel_target::BazelProcessInfo;
 
 #[async_trait]
 pub trait Task: Send + Sync {
@@ -50,6 +52,7 @@ pub enum TaskResult {
     ArgoAppStatuses(HashMap<String, AppInfo>),
     AwsProfile{ profile: AwsProfileInfo, updated: bool },
     AwsSecret(String),
+    BazelProcess(BazelProcessInfo),
     GithubPrFiles(Vec<GithubPrFile>),
     InfluxCommand,
     InfluxInstance(InfluxInstance),

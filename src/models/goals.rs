@@ -15,6 +15,7 @@ use crate::tasks::perform_sso::PerformSsoTask;
 use crate::tasks::port_forward::PortForwardTask;
 use crate::tasks::influx_dump::InfluxDumpTask;
 use crate::tasks::run_pgcli::RunPgcliTask;
+use crate::tasks::run_bazel_target::RunBazelTargetTask;
 use crate::tasks::select_actuator_service::SelectActuatorServiceTask;
 use crate::tasks::select_aws_profile::SelectAwsProfileTask;
 use crate::tasks::select_influx_instance::SelectInfluxInstanceTask;
@@ -179,6 +180,16 @@ impl Goal {
         Goal::new_terminal(GoalType::ArgoStatusKnown, params)
     }
 
+    pub fn terminal_bazel_target_running(target: String) -> Self {
+        let params = GoalParams::BazelTargetRunning { target, tear_down: false };
+        Goal::new_terminal(GoalType::BazelTargetRunning, params)
+    }
+
+    pub fn bazel_target_running(target: String) -> Self {
+        let params = GoalParams::BazelTargetRunning { target, tear_down: true };
+        Goal::new(GoalType::BazelTargetRunning, params)
+    }
+
     pub fn vault_secret_known(secret_path: String, field: Option<String>, aws_account: Option<AwsAccount>, aws_profile: Option<String>) -> Self {
         let params = GoalParams::VaultSecretKnown {
             path: Some(secret_path),
@@ -207,6 +218,7 @@ pub enum GoalType {
     ArgoStatusKnown,
     AwsProfileSelected,
     AwsSecretKnown,
+    BazelTargetRunning,
     GithubPrFilesKnown,
     InfluxInstanceSelected,
     InfluxLaunched,
@@ -230,6 +242,7 @@ impl GoalType {
             GoalType::ArgoStatusKnown => Box::new(GetArgoAppStatusesTask),
             GoalType::AwsProfileSelected => Box::new(SelectAwsProfileTask),
             GoalType::AwsSecretKnown => Box::new(GetAwsSecretTask),
+            GoalType::BazelTargetRunning => Box::new(RunBazelTargetTask),
             GoalType::GithubPrFilesKnown => Box::new(GetGithubPrFilesTask),
             GoalType::InfluxInstanceSelected => Box::new(SelectInfluxInstanceTask),
             GoalType::InfluxLaunched => Box::new(LaunchInfluxTask),
@@ -266,6 +279,10 @@ pub enum GoalParams {
     AwsSecretKnown {
         name: Option<String>,
         aws_profile: Option<String>,
+    },
+    BazelTargetRunning {
+        target: String,
+        tear_down: bool,
     },
     GithubPrFilesKnown {
         repo: String,

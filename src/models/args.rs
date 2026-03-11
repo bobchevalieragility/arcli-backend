@@ -31,6 +31,9 @@ impl CliArgs {
             CliCommand::Argo { pull_request} => vec![
                 Goal::terminal_argo(pull_request)
             ],
+            CliCommand::Bazel { target } => vec![
+                Goal::terminal_bazel_target_running(target)
+            ],
             CliCommand::Completions => vec![Goal::terminal_tab_completions()],
             CliCommand::Influx { action } => {
                 match action {
@@ -101,6 +104,11 @@ pub enum CliCommand {
         )]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         pull_request: Option<u32>,
+    },
+    #[command(about = "Run a Bazel target (e.g., bazel run //package:target)")]
+    Bazel {
+        #[arg(help = "Bazel target to run (e.g., //package/ar-control:ar-control-sim-mac)")]
+        target: String,
     },
     #[command(about = "Generate a shell completion script")]
     Completions,

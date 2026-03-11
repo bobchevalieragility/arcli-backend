@@ -34,6 +34,9 @@ pub enum ArcError {
     #[error("SSO session expired, please run 'models sso login'")]
     AwsSsoExpired,
 
+    #[error("Bazel is not installed or not found in PATH. Please install Bazel first: https://bazel.build/install")]
+    BazelNotFound,
+
     #[error("SSO Register Error: {0}")]
     SsoRegisterError(#[from] SsoSdkError<RegisterClientError, SsoHttpResponse>),
 
@@ -45,6 +48,9 @@ pub enum ArcError {
 
     #[error("Chrono parse error: {0}")]
     ChronoParseError(#[from] chrono::ParseError),
+
+    #[error("Command execution error: {0}")]
+    CommandExecutionError(String),
 
     #[error("Error: {0}")]
     Error(#[from] Box<dyn std::error::Error + Send + Sync>),

@@ -1,4 +1,7 @@
-[[port-forward.groups]]  
+[bazel]
+agility_software_repo = "~/code/agility-software"
+
+[[port-forward.groups]]
 name = "group1"  
 services = [  
   { name = "workflow-management", namespace = "development", local_port = 8081 },  
