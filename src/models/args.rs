@@ -31,6 +31,11 @@ impl CliArgs {
             CliCommand::Argo { pull_request} => vec![
                 Goal::terminal_argo(pull_request)
             ],
+            CliCommand::Bazel { action } => {
+                match action {
+                    BazelAction::Run { target } => vec![Goal::terminal_bazel_target_running(target)],
+                }
+            },
             CliCommand::Completions => vec![Goal::terminal_tab_completions()],
             CliCommand::Influx { action } => {
                 match action {
@@ -101,6 +106,11 @@ pub enum CliCommand {
         )]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         pull_request: Option<u32>,
+    },
+    #[command(about = "Run a Bazel command")]
+    Bazel {
+        #[command(subcommand)]
+        action: BazelAction,
     },
     #[command(about = "Generate a shell completion script")]
     Completions,
@@ -223,6 +233,15 @@ pub enum LoggingAction {
         #[arg(short = 'k', long, help = "Use K8 context", num_args = 0..=1, default_missing_value = "PROMPT")]
         // Will be PROMPT if the user included the flag without a value, None if they didn't include the flag at all
         kube_context: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BazelAction {
+    #[command(about = "Run a Bazel target")]
+    Run {
+        #[arg(help = "Bazel path and target name to run (e.g., ar-control:ar-control-sim-mac)")]
+        target: String,
     },
 }
 
